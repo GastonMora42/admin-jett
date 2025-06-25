@@ -1,9 +1,3 @@
-
-// =====================================================
-// CONFIGURACIÓN PRISMA ACTUALIZADA - prisma/schema.prisma
-// =====================================================
-
-/*
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,8 +5,51 @@ generator client {
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
 }
+
+// =====================================================
+// MODELOS DE AUTENTICACIÓN
+// =====================================================
+
+model Usuario {
+  id            String          @id @default(cuid())
+  cognitoId     String          @unique
+  email         String          @unique
+  nombre        String
+  apellido      String
+  avatar        String?
+  rol           RolUsuario      @default(VENTAS)
+  estado        EstadoUsuario   @default(ACTIVO)
+  fechaCreacion DateTime        @default(now())
+  fechaLogin    DateTime?
+  creadoPor     String?
+  
+  // Relaciones
+  clientesCreados   Cliente[]     @relation("ClienteCreador")
+  proyectosCreados  Proyecto[]    @relation("ProyectoCreador")
+  pagosGestionados  Pago[]        @relation("PagoGestor")
+  
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@map("usuarios")
+}
+
+enum RolUsuario {
+  SUPERADMIN
+  ADMIN
+  VENTAS
+}
+
+enum EstadoUsuario {
+  ACTIVO
+  INACTIVO
+  SUSPENDIDO
+}
+
+// =====================================================
+// MODELOS EXISTENTES ACTUALIZADOS
+// =====================================================
 
 model Cliente {
   id            String          @id @default(cuid())
@@ -22,6 +59,11 @@ model Cliente {
   empresa       String?
   fechaRegistro DateTime        @default(now())
   estado        EstadoCliente   @default(ACTIVO)
+  
+  // Auditoría
+  creadoPor     String?
+  creador       Usuario?        @relation("ClienteCreador", fields: [creadoPor], references: [id])
+  
   proyectos     Proyecto[]
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
@@ -40,9 +82,16 @@ model Proyecto {
   fechaEntrega   DateTime?
   estadoProyecto EstadoProyecto @default(EN_DESARROLLO)
   estadoPago     EstadoPago     @default(PENDIENTE)
+  
+  // Relaciones
   clienteId      String
   cliente        Cliente        @relation(fields: [clienteId], references: [id], onDelete: Cascade)
   pagos          Pago[]
+  
+  // Auditoría
+  creadoPor      String?
+  creador        Usuario?       @relation("ProyectoCreador", fields: [creadoPor], references: [id])
+  
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
@@ -58,13 +107,24 @@ model Pago {
   estadoPago       EstadoPago @default(PENDIENTE)
   metodoPago       String?
   notas            String?
+  
+  // Relaciones
   proyectoId       String
   proyecto         Proyecto  @relation(fields: [proyectoId], references: [id], onDelete: Cascade)
+  
+  // Auditoría
+  gestionadoPor    String?
+  gestor           Usuario?  @relation("PagoGestor", fields: [gestionadoPor], references: [id])
+  
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
   @@map("pagos")
 }
+
+// =====================================================
+// ENUMS
+// =====================================================
 
 enum EstadoCliente {
   ACTIVO
