@@ -1,0 +1,30 @@
+// =====================================================
+// TAILWIND CONFIG - tailwind.config.js
+// =====================================================
+
+/** @type {import('tailwindcss').Config} */
+module.exports = {
+    content: [
+      './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
+      './src/components/**/*.{js,ts,jsx,tsx,mdx}',
+      './src/app/**/*.{js,ts,jsx,tsx,mdx}',
+    ],
+    theme: {
+      extend: {
+        colors: {
+          background: "var(--background)",
+          foreground: "var(--foreground)",
+        },
+        animation: {
+          'shimmer': 'shimmer 1.5s infinite',
+        },
+        keyframes: {
+          shimmer: {
+            '0%': { backgroundPosition: '-200px 0' },
+            '100%': { backgroundPosition: 'calc(200px + 100%) 0' },
+          },
+        },
+      },
+    },
+    plugins: [],
+  }

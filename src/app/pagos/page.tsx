@@ -417,9 +417,11 @@ export default function PagosPage() {
         isOpen={showRegistrarPago}
         onClose={() => {
           setShowRegistrarPago(false)
-          setPagoToRegister(null)
+          setPagoToRegister(undefined)
         }}
-        onSubmit={handleRegistrarPago}
+        onSubmit={async (data) => {
+          await handleRegistrarPago(data)
+        }}
         pago={pagoToRegister}
       />
 
@@ -752,7 +754,7 @@ const PagosTable: React.FC<{
                     </button>
                   </div>
                 </td>
-              </tr>
+              </motion.tr>
             ))}
           </tbody>
         </table>

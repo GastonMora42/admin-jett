@@ -11,8 +11,8 @@ import { AuthProvider } from '@/components/AuthProvider'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata = {
-  title: 'PayTracker - Software Factory',
-  description: 'Sistema de gestión de clientes, proyectos y pagos con autenticación AWS Cognito',
+  title: 'Jett Labs - Software Factory',
+  description: 'Jett Admin Sistem',
 }
 
 export default function RootLayout({

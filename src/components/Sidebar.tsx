@@ -121,7 +121,7 @@ export const Sidebar = () => {
                   />
                 </div>
                 <div>
-                  <h1 className="text-xl font-bold text-white">PayTracker</h1>
+                  <h1 className="text-xl font-bold text-white">Jett Labs</h1>
                   <p className="text-xs text-gray-400">Software Factory</p>
                 </div>
               </motion.div>

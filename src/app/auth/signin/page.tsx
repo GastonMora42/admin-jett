@@ -83,7 +83,7 @@ export default function SignInPage() {
               />
             </div>
             <h1 className="text-2xl font-bold text-white mb-2">
-              Bienvenido a PayTracker
+              Central de Jett Labs
             </h1>
             <p className="text-gray-400 text-sm">
               Inicia sesión para acceder a tu panel de control
@@ -162,34 +162,15 @@ export default function SignInPage() {
                   </div>
                 )}
               </button>
-
-              <div className="text-center">
-                <span className="text-gray-400 text-sm">o</span>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleCognitoLogin}
-                disabled={loading}
-                className="w-full btn-secondary"
-              >
-                Continuar con AWS Cognito
-              </button>
             </div>
           </form>
 
-          {/* Footer */}
-          <div className="mt-8 text-center">
-            <p className="text-gray-400 text-xs">
-              ¿Necesitas acceso? Contacta a tu administrador.
-            </p>
-          </div>
         </div>
 
         {/* Footer Info */}
         <div className="text-center mt-6">
           <p className="text-gray-500 text-xs">
-            PayTracker v1.0 - Sistema de Gestión de Pagos
+            Jett Labs v1.0 - Sistema Administrativo interno
           </p>
         </div>
       </motion.div>
