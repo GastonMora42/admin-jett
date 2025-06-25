@@ -1,0 +1,102 @@
+
+// =====================================================
+// CONFIGURACIÓN PRISMA ACTUALIZADA - prisma/schema.prisma
+// =====================================================
+
+/*
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Cliente {
+  id            String          @id @default(cuid())
+  nombre        String
+  email         String          @unique
+  telefono      String?
+  empresa       String?
+  fechaRegistro DateTime        @default(now())
+  estado        EstadoCliente   @default(ACTIVO)
+  proyectos     Proyecto[]
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@map("clientes")
+}
+
+model Proyecto {
+  id             String         @id @default(cuid())
+  nombre         String
+  tipo           TipoProyecto
+  montoTotal     Float
+  formaPago      FormaPago
+  cuotas         Int?
+  fechaInicio    DateTime
+  fechaEntrega   DateTime?
+  estadoProyecto EstadoProyecto @default(EN_DESARROLLO)
+  estadoPago     EstadoPago     @default(PENDIENTE)
+  clienteId      String
+  cliente        Cliente        @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  pagos          Pago[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@map("proyectos")
+}
+
+model Pago {
+  id               String    @id @default(cuid())
+  numeroCuota      Int
+  montoCuota       Float
+  fechaVencimiento DateTime
+  fechaPagoReal    DateTime?
+  estadoPago       EstadoPago @default(PENDIENTE)
+  metodoPago       String?
+  notas            String?
+  proyectoId       String
+  proyecto         Proyecto  @relation(fields: [proyectoId], references: [id], onDelete: Cascade)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@map("pagos")
+}
+
+enum EstadoCliente {
+  ACTIVO
+  INACTIVO
+}
+
+enum TipoProyecto {
+  SOFTWARE_A_MEDIDA
+  ECOMMERCE
+  LANDING_PAGE
+  SISTEMA_WEB
+  APP_MOVIL
+  MANTENIMIENTO
+}
+
+enum FormaPago {
+  PAGO_UNICO
+  DOS_CUOTAS
+  TRES_CUOTAS
+  MENSUAL
+}
+
+enum EstadoProyecto {
+  EN_DESARROLLO
+  COMPLETADO
+  EN_PAUSA
+  CANCELADO
+}
+
+enum EstadoPago {
+  PENDIENTE
+  PAGADO
+  VENCIDO
+  PARCIAL
+}

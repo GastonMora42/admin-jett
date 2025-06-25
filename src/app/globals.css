@@ -1,0 +1,79 @@
+@import "tailwindcss/preflight";
+@tailwind utilities;
+
+@layer base {
+  * {
+    border-color: theme('colors.white / 10%');
+  }
+  
+  body {
+    font-feature-settings: 'rlig' 1, 'calt' 1;
+  }
+}
+
+@layer utilities {
+  .glass {
+    @apply bg-black/20 backdrop-blur-xl border border-white/10;
+  }
+  
+  .glass-hover {
+    @apply hover:bg-white/5 transition-all duration-200;
+  }
+  
+  .input-glass {
+    @apply glass px-3 py-2 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-white/20 focus:bg-white/5;
+  }
+  
+  .btn-primary {
+    @apply bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors font-medium;
+  }
+  
+  .btn-secondary {
+    @apply glass glass-hover text-white px-4 py-2 rounded-lg transition-colors font-medium;
+  }
+  
+  .card {
+    @apply glass rounded-xl p-6 glass-hover;
+  }
+}
+
+/* Scrollbar personalizado */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Animaciones adicionales */
+@keyframes shimmer {
+  0% {
+    background-position: -200px 0;
+  }
+  100% {
+    background-position: calc(200px + 100%) 0;
+  }
+}
+
+.loading-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.05) 0px,
+    rgba(255, 255, 255, 0.1) 40px,
+    rgba(255, 255, 255, 0.05) 80px
+  );
+  background-size: 200px;
+  animation: shimmer 1.5s infinite;
+}
