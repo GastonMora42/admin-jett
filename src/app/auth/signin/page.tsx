@@ -1,5 +1,5 @@
 // =====================================================
-// PÁGINA DE LOGIN MEJORADA - src/app/auth/signin/page.tsx
+// PÁGINA DE LOGIN SIMPLIFICADA - src/app/auth/signin/page.tsx
 // =====================================================
 
 'use client'
@@ -8,7 +8,7 @@ import React, { useState, useEffect } from 'react'
 import { signIn, getSession } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { Eye, EyeOff, LogIn, AlertCircle, ArrowLeft, Shield, Zap, Users } from 'lucide-react'
+import { Eye, EyeOff, LogIn, AlertCircle, ArrowLeft, Shield, Zap, Users, UserPlus, CheckCircle } from 'lucide-react'
 import { SilkBackground } from '@/components/SilkBackground'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -19,10 +19,13 @@ export default function SignInPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
+  const [registrationEnabled, setRegistrationEnabled] = useState(false)
   
   const router = useRouter()
   const searchParams = useSearchParams()
   const callbackUrl = searchParams.get('callbackUrl') || '/dashboard'
+  const urlMessage = searchParams.get('message')
   
   useEffect(() => {
     // Verificar si ya está autenticado
@@ -31,12 +34,31 @@ export default function SignInPage() {
         router.push(callbackUrl)
       }
     })
-  }, [router, callbackUrl])
+
+    // Verificar si el registro está habilitado
+    checkRegistrationStatus()
+
+    // Mostrar mensaje de URL si existe
+    if (urlMessage === 'account-confirmed') {
+      setMessage('¡Cuenta confirmada exitosamente! Ya puedes iniciar sesión.')
+    }
+  }, [router, callbackUrl, urlMessage])
+
+  const checkRegistrationStatus = async () => {
+    try {
+      const response = await fetch('/api/auth/registration-status')
+      const data = await response.json()
+      setRegistrationEnabled(data.enabled)
+    } catch (error) {
+      console.error('Error checking registration status:', error)
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError('')
+    setMessage('')
 
     try {
       const result = await signIn('cognito', {
@@ -47,12 +69,20 @@ export default function SignInPage() {
       })
 
       if (result?.error) {
-        setError('Credenciales inválidas. Por favor, verifica tu email y contraseña.')
+        if (result.error.includes('UserNotConfirmedException')) {
+          setError('Tu cuenta no está confirmada. Revisa tu email para el código de confirmación.')
+        } else if (result.error.includes('NotAuthorizedException')) {
+          setError('Email o contraseña incorrectos.')
+        } else if (result.error.includes('UserNotFoundException')) {
+          setError('No existe una cuenta con este email.')
+        } else {
+          setError('Error al iniciar sesión. Verifica tus credenciales.')
+        }
       } else if (result?.ok) {
         router.push(callbackUrl)
       }
     } catch (error) {
-      setError('Error al iniciar sesión. Por favor, intenta más tarde.')
+      setError('Error de conexión. Por favor, intenta más tarde.')
     } finally {
       setLoading(false)
     }
@@ -113,7 +143,7 @@ export default function SignInPage() {
                   src="/logo.webp"
                   alt="Jett Labs Logo"
                   fill
-                  className="object-contain"
+                  className="object-contain rounded-xl"
                 />
               </div>
               <div>
@@ -169,12 +199,12 @@ export default function SignInPage() {
                     src="/logo.webp"
                     alt="Jett Labs Logo"
                     fill
-                    className="object-contain"
+                    className="object-contain rounded-lg"
                   />
                 </div>
                 <div>
                   <h1 className="text-xl font-bold">Jett Labs</h1>
-                  <p className="text-xs text-gray-400">Software Factory</p>
+                  <p className="text-xs text-gray-400">Software Factory Management</p>
                 </div>
               </div>
             </div>
@@ -188,6 +218,21 @@ export default function SignInPage() {
                   Accede a tu panel de control administrativo
                 </p>
               </div>
+
+              {/* Success Message */}
+              {message && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="mb-6 p-4 bg-green-500/10 border border-green-500/20 rounded-lg flex items-start space-x-3"
+                >
+                  <CheckCircle className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-green-400 text-sm font-medium">Éxito</p>
+                    <p className="text-green-300 text-xs mt-1">{message}</p>
+                  </div>
+                </motion.div>
+              )}
 
               {/* Error Message */}
               {error && (
@@ -281,6 +326,25 @@ export default function SignInPage() {
                 </button>
               </form>
 
+              {/* Registration link */}
+              {registrationEnabled && (
+                <div className="mt-6 pt-6 border-t border-white/10 text-center">
+                  <p className="text-gray-400 text-sm mb-3">
+                    ¿No tienes una cuenta?
+                  </p>
+                  <Link href="/auth/register">
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      className="w-full bg-white/5 hover:bg-white/10 border border-white/20 text-white py-3 px-4 rounded-lg font-medium transition-all flex items-center justify-center"
+                    >
+                      <UserPlus className="w-5 h-5 mr-2" />
+                      Crear Nueva Cuenta
+                    </motion.button>
+                  </Link>
+                </div>
+              )}
+
               {/* Footer */}
               <div className="mt-8 pt-6 border-t border-white/10">
                 <p className="text-center text-gray-500 text-xs">
@@ -292,7 +356,7 @@ export default function SignInPage() {
             {/* Additional info */}
             <div className="text-center mt-6">
               <p className="text-gray-500 text-xs">
-                PayTracker v2.0 • Desarrollado por Jett Labs
+                Jett Labs v2.0 • Desarrollado por Jett Labs
               </p>
             </div>
           </motion.div>
