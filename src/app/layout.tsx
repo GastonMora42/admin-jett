@@ -1,20 +1,15 @@
-// =====================================================
-// LAYOUT PRINCIPAL MEJORADO - src/app/layout.tsx
-// =====================================================
-
+// app/layout.tsx
+import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
-import { AuthProvider } from '@/components/AuthProvider'
+import { AuthProvider } from '@/components/AuthProvider' // ← Agregar esto
 import { AppLayout } from '@/components/AppLayout'
 
 const inter = Inter({ subsets: ['latin'] })
 
-export const metadata = {
+export const metadata: Metadata = {
   title: 'Jett Labs - Software Factory Management',
   description: 'Sistema de gestión integral para software factories',
-  keywords: 'software factory, gestión proyectos, pagos, clientes',
-  authors: [{ name: 'Jett Labs' }],
-  viewport: 'width=device-width, initial-scale=1',
 }
 
 export default function RootLayout({
@@ -24,11 +19,8 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es">
-      <head>
-        <link rel="icon" href="/logo.webp" />
-        <meta name="theme-color" content="#000000" />
-      </head>
-      <body className={`${inter.className} bg-black text-white antialiased`}>
+      <body className={inter.className}>
+        {/* Envolver toda la aplicación con AuthProvider */}
         <AuthProvider>
           <AppLayout>
             {children}

@@ -6,11 +6,10 @@
 
 import React from 'react'
 import { usePathname } from 'next/navigation'
-import { useSession } from 'next-auth/react'
+import { useAuth } from '@/components/AuthProvider' // ← Cambiado de next-auth
 import { SilkBackground } from '@/components/SilkBackground'
 import { Sidebar } from '@/components/Sidebar'
 import { AuthLoading } from '@/components/AuthLoading'
-import { ProtectedRoute } from '@/components/ProtectedRoute'
 
 interface AppLayoutProps {
   children: React.ReactNode
@@ -18,16 +17,16 @@ interface AppLayoutProps {
 
 export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const pathname = usePathname()
-  const { data: session, status } = useSession()
+  const { user, isAuthenticated, isLoading } = useAuth() // ← Cambiado de useSession
 
   // Rutas públicas que no requieren sidebar
-  const publicRoutes = ['/', '/auth/signin', '/auth/signup', '/auth/error', '/auth/suspended', '/auth/unauthorized']
+  const publicRoutes = ['/', '/auth/signin', '/auth/signup', '/auth/error', '/auth/suspended', '/auth/unauthorized', '/auth/register']
   
   // Verificar si es una ruta pública
   const isPublicRoute = publicRoutes.includes(pathname) || pathname.startsWith('/auth/')
   
-  // Si está cargando la sesión, mostrar loading
-  if (status === 'loading') {
+  // Si está cargando la autenticación, mostrar loading
+  if (isLoading) {
     return <AuthLoading />
   }
 
@@ -41,9 +40,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   }
 
   // Para rutas protegidas, verificar autenticación
-  if (!session) {
+  if (!isAuthenticated || !user) {
     // Si no está autenticado y trata de acceder a ruta protegida,
-    // el middleware debería redirigir, pero por seguridad mostramos loading
+    // el AuthProvider debería redirigir, pero por seguridad mostramos loading
     return <AuthLoading />
   }
 

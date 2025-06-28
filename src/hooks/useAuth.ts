@@ -1,99 +1,99 @@
-// =====================================================
-// HOOKS DE AUTENTICACIÓN - src/hooks/useAuth.ts
-// =====================================================
+// hooks/useAuth.ts
+'use client';
 
-import { useSession } from 'next-auth/react'
-import { useMemo } from 'react'
-import { PERMISOS, RolUsuario } from '@/types/auth'
+import { useState, useEffect } from 'react';
+import { authUtils } from '@/lib/auth';
 
-export const useAuth = () => {
-  const { data: session, status } = useSession()
-  
-  const user = useMemo(() => {
-    if (!session?.user) return null
-    return {
-      id: session.user.id,
-      email: session.user.email,
-      nombre: session.user.nombre,
-      apellido: session.user.apellido,
-      rol: session.user.rol as RolUsuario,
-      estado: session.user.estado,
-      image: session.user.image,
+interface User {
+  email: string;
+  name: string;
+  given_name: string;
+  family_name: string;
+  sub: string;
+  address?: any;
+  'custom:role'?: string;
+}
+
+export function useAuth() {
+  const [user, setUser] = useState<User | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  useEffect(() => {
+    const checkAuth = () => {
+      const authenticated = authUtils.isAuthenticated();
+      const userData = authUtils.getCurrentUser();
+      
+      setIsAuthenticated(authenticated);
+      setUser(userData);
+      setIsLoading(false);
+    };
+
+    checkAuth();
+
+    // Verificar autenticación cada minuto
+    const interval = setInterval(checkAuth, 60000);
+    
+    return () => clearInterval(interval);
+  }, []);
+
+  const login = async (email: string, password: string) => {
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Error de autenticación');
+      }
+
+      // Guardar tokens
+      authUtils.setTokens({
+        accessToken: data.accessToken,
+        idToken: data.idToken,
+        refreshToken: data.refreshToken,
+      });
+
+      // Actualizar estado
+      const userData = authUtils.getCurrentUser();
+      setUser(userData);
+      setIsAuthenticated(true);
+
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
     }
-  }, [session])
+  };
 
-  const isAuthenticated = status === 'authenticated' && !!user
-  const isLoading = status === 'loading'
+  const logout = async () => {
+    await authUtils.logout();
+    setUser(null);
+    setIsAuthenticated(false);
+  };
+
+  const refreshAuth = async () => {
+    const success = await authUtils.refreshTokens();
+    if (success) {
+      const userData = authUtils.getCurrentUser();
+      setUser(userData);
+      setIsAuthenticated(true);
+    } else {
+      setUser(null);
+      setIsAuthenticated(false);
+    }
+    return success;
+  };
 
   return {
     user,
     isAuthenticated,
     isLoading,
-    session,
-  }
-}
-
-export const usePermissions = () => {
-  const { user } = useAuth()
-  
-  const permissions = useMemo(() => {
-    if (!user?.rol) return null
-    return PERMISOS[user.rol]
-  }, [user?.rol])
-
-  const can = useMemo(() => ({
-    // Usuarios
-    viewUsers: () => permissions?.usuarios?.leer || false,
-    createUsers: () => permissions?.usuarios?.crear || false,
-    editUsers: () => permissions?.usuarios?.editar || false,
-    deleteUsers: () => permissions?.usuarios?.eliminar || false,
-    
-    // Clientes
-    viewClients: () => permissions?.clientes?.leer || false,
-    createClients: () => permissions?.clientes?.crear || false,
-    editClients: () => permissions?.clientes?.editar || false,
-    deleteClients: () => permissions?.clientes?.eliminar || false,
-    
-    // Proyectos
-    viewProjects: () => permissions?.proyectos?.leer || false,
-    createProjects: () => permissions?.proyectos?.crear || false,
-    editProjects: () => permissions?.proyectos?.editar || false,
-    deleteProjects: () => permissions?.proyectos?.eliminar || false,
-    
-    // Pagos
-    viewPayments: () => permissions?.pagos?.leer || false,
-    createPayments: () => permissions?.pagos?.crear || false,
-    editPayments: () => permissions?.pagos?.editar || false,
-    deletePayments: () => permissions?.pagos?.eliminar || false,
-    
-    // Reportes
-    viewReports: () => permissions?.reportes?.leer || false,
-    createReports: () => permissions?.reportes?.crear || false,
-    
-    // Configuración
-    viewSettings: () => permissions?.configuracion?.leer || false,
-    editSettings: () => permissions?.configuracion?.editar || false,
-    
-    // Roles específicos
-    isSuperAdmin: () => user?.rol === 'SUPERADMIN',
-    isAdmin: () => ['SUPERADMIN', 'ADMIN'].includes(user?.rol || ''),
-    isSales: () => user?.rol === 'VENTAS',
-  }), [permissions, user?.rol])
-
-  return {
-    permissions,
-    can,
-    userRole: user?.rol,
-  }
-}
-
-export const useRoleCheck = (requiredRoles: RolUsuario[]) => {
-  const { user } = useAuth()
-  
-  const hasAccess = useMemo(() => {
-    if (!user?.rol) return false
-    return requiredRoles.includes(user.rol)
-  }, [user?.rol, requiredRoles])
-
-  return hasAccess
+    login,
+    logout,
+    refreshAuth,
+  };
 }

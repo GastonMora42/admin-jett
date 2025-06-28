@@ -1,15 +1,15 @@
-// src/app/api/auth/confirm/route.ts
-import { CognitoIdentityProviderClient, ConfirmSignUpCommand } from '@aws-sdk/client-cognito-identity-provider';
+// src/app/api/auth/confirm-forgot-password/route.ts
+import { CognitoIdentityProviderClient, ConfirmForgotPasswordCommand } from '@aws-sdk/client-cognito-identity-provider';
 import { NextResponse } from 'next/server';
 import { getSecretHash, cognitoConfig } from '@/lib/cognito-utils';
 
 export async function POST(request: Request) {
   try {
-    const { email, confirmationCode } = await request.json();
+    const { email, confirmationCode, newPassword } = await request.json();
 
-    if (!email || !confirmationCode) {
+    if (!email || !confirmationCode || !newPassword) {
       return NextResponse.json(
-        { error: 'Email y código de confirmación son requeridos' },
+        { error: 'Email, código de confirmación y nueva contraseña son requeridos' },
         { status: 400 }
       );
     }
@@ -21,21 +21,22 @@ export async function POST(request: Request) {
     // Generar SECRET_HASH
     const secretHash = getSecretHash(email);
 
-    const confirmCommand = new ConfirmSignUpCommand({
+    const confirmForgotPasswordCommand = new ConfirmForgotPasswordCommand({
       ClientId: cognitoConfig.clientId,
       Username: email,
       ConfirmationCode: confirmationCode,
+      Password: newPassword,
       SecretHash: secretHash, // ← Agregado
     });
 
-    await cognitoClient.send(confirmCommand);
+    await cognitoClient.send(confirmForgotPasswordCommand);
 
     return NextResponse.json({
-      message: 'Cuenta confirmada exitosamente. Ya puedes iniciar sesión.',
+      message: 'Contraseña actualizada exitosamente.',
     });
 
   } catch (error: any) {
-    console.error('Error en confirmación:', error);
+    console.error('Error en confirm forgot password:', error);
     
     let errorMessage = 'Error interno del servidor';
     
@@ -43,6 +44,8 @@ export async function POST(request: Request) {
       errorMessage = 'Código de confirmación inválido';
     } else if (error.name === 'ExpiredCodeException') {
       errorMessage = 'Código de confirmación expirado';
+    } else if (error.name === 'InvalidPasswordException') {
+      errorMessage = 'La nueva contraseña no cumple con los requisitos';
     } else if (error.name === 'UserNotFoundException') {
       errorMessage = 'Usuario no encontrado';
     }

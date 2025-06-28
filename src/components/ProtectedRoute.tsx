@@ -1,154 +1,63 @@
-// =====================================================
-// COMPONENTE PROTECTED ROUTE - src/components/ProtectedRoute.tsx
-// =====================================================
-
+// src/components/ProtectedRoute.tsx - Versión migrada
 'use client'
 
 import React, { useEffect } from 'react'
-import { useSession } from 'next-auth/react'
 import { useRouter, usePathname } from 'next/navigation'
+import { useAuth } from '@/components/AuthProvider' // ← Cambiado de next-auth
 import { AuthLoading } from '@/components/AuthLoading'
-import { PERMISOS, RolUsuario } from '@/types/auth'
 
 interface ProtectedRouteProps {
   children: React.ReactNode
-  requiredRoles?: RolUsuario[]
-  requireAuth?: boolean
+  fallback?: React.ReactNode
+  requiredRole?: string
 }
 
-export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
-  children,
-  requiredRoles = [],
-  requireAuth = true
+export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ 
+  children, 
+  fallback,
+  requiredRole 
 }) => {
-  const { data: session, status } = useSession()
+  const { user, isAuthenticated, isLoading } = useAuth() // ← Cambiado de useSession
   const router = useRouter()
   const pathname = usePathname()
 
   useEffect(() => {
-    if (status === 'loading') return // Aún cargando
-
-    // Si se requiere autenticación y no hay sesión
-    if (requireAuth && !session) {
+    if (!isLoading && !isAuthenticated) {
+      // Redirigir al login con la URL de retorno
       router.push(`/auth/signin?callbackUrl=${encodeURIComponent(pathname)}`)
-      return
     }
+  }, [isLoading, isAuthenticated, router, pathname])
 
-    // Si hay roles requeridos y el usuario no tiene el rol necesario
-    if (session && requiredRoles.length > 0) {
-      const userRole = session.user.rol as RolUsuario
-      if (!requiredRoles.includes(userRole)) {
-        router.push('/auth/unauthorized')
-        return
-      }
-    }
-
-    // Verificar estado del usuario
-    if (session && session.user.estado !== 'ACTIVO') {
-      router.push('/auth/suspended')
-      return
-    }
-  }, [session, status, router, pathname, requiredRoles, requireAuth])
-
-  // Mostrar loading mientras se verifica
-  if (status === 'loading') {
-    return <AuthLoading />
+  // Mostrar loading mientras verifica autenticación
+  if (isLoading) {
+    return fallback || <AuthLoading />
   }
 
-  // Si se requiere auth y no hay sesión, no mostrar nada (se está redirigiendo)
-  if (requireAuth && !session) {
-    return <AuthLoading />
+  // Si no está autenticado, no mostrar nada (ya redirigió)
+  if (!isAuthenticated || !user) {
+    return null
   }
 
-  // Si hay roles requeridos y el usuario no los tiene
-  if (session && requiredRoles.length > 0) {
-    const userRole = session.user.rol as RolUsuario
-    if (!requiredRoles.includes(userRole)) {
-      return <AuthLoading />
-    }
+  // Verificar rol si es requerido
+  if (requiredRole && user['custom:role'] !== requiredRole) {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold mb-4">Acceso Denegado</h2>
+          <p className="text-gray-400 mb-6">
+            No tienes permisos para acceder a esta página.
+          </p>
+          <button
+            onClick={() => router.push('/dashboard')}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg"
+          >
+            Volver al Dashboard
+          </button>
+        </div>
+      </div>
+    )
   }
 
-  // Si el usuario está suspendido
-  if (session && session.user.estado !== 'ACTIVO') {
-    return <AuthLoading />
-  }
-
+  // Si está autenticado y tiene el rol correcto, mostrar el contenido
   return <>{children}</>
-}
-
-// Hook para verificar permisos específicos
-export const useRoutePermissions = () => {
-  const { data: session } = useSession()
-  const pathname = usePathname()
-
-  const hasPermission = (permission: string, action: 'leer' | 'crear' | 'editar' | 'eliminar' = 'leer'): boolean => {
-    if (!session?.user?.rol) return false
-    
-    const userRole = session.user.rol as RolUsuario
-    const permissions = PERMISOS[userRole]
-    
-    return permissions[permission]?.[action] || false
-  }
-
-  const canAccessRoute = (route: string): boolean => {
-    if (!session?.user?.rol) return false
-    
-    const userRole = session.user.rol as RolUsuario
-    const permissions = PERMISOS[userRole]
-    
-    // Mapear rutas a permisos
-    if (route.startsWith('/clientes')) {
-      return permissions.clientes?.leer || false
-    }
-    
-    if (route.startsWith('/proyectos')) {
-      return permissions.proyectos?.leer || false
-    }
-    
-    if (route.startsWith('/pagos')) {
-      return permissions.pagos?.leer || false
-    }
-    
-    if (route.startsWith('/admin/usuarios')) {
-      return permissions.usuarios?.leer || false
-    }
-    
-    if (route.startsWith('/configuracion')) {
-      return permissions.configuracion?.leer || false
-    }
-    
-    if (route.startsWith('/facturacion') || route.startsWith('/analytics')) {
-      return permissions.reportes?.leer || false
-    }
-    
-    // Rutas que todos pueden acceder
-    if (['/dashboard', '/perfil', '/calendario'].some(publicRoute => route.startsWith(publicRoute))) {
-      return true
-    }
-    
-    return false
-  }
-
-  const getUserRole = (): RolUsuario | null => {
-    return session?.user?.rol as RolUsuario || null
-  }
-
-  const isAdmin = (): boolean => {
-    const role = getUserRole()
-    return role === 'SUPERADMIN' || role === 'ADMIN'
-  }
-
-  const isSuperAdmin = (): boolean => {
-    return getUserRole() === 'SUPERADMIN'
-  }
-
-  return {
-    hasPermission,
-    canAccessRoute,
-    getUserRole,
-    isAdmin,
-    isSuperAdmin,
-    currentRoute: pathname,
-    canAccessCurrentRoute: canAccessRoute(pathname)
-  }
 }

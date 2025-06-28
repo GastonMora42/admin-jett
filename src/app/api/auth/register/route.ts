@@ -1,108 +1,106 @@
-// =====================================================
-// API DE REGISTRO - src/app/api/auth/register/route.ts
-// =====================================================
+// src/app/api/auth/register/route.ts - Versión de Producción
+import { CognitoIdentityProviderClient, SignUpCommand } from '@aws-sdk/client-cognito-identity-provider';
+import { NextResponse } from 'next/server';
+import { getSecretHash, cognitoConfig } from '@/lib/cognito-utils';
 
-import { NextRequest, NextResponse } from 'next/server'
-import {
-  CognitoIdentityProviderClient,
-  SignUpCommand
-} from '@aws-sdk/client-cognito-identity-provider'
-
-const cognitoClient = new CognitoIdentityProviderClient({
-  region: process.env.AWS_REGION!
-})
-
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
-    // Verificar si el registro está habilitado
-    if (process.env.ENABLE_PUBLIC_REGISTRATION !== 'true') {
-      return NextResponse.json(
-        { message: 'Registro público no disponible' },
-        { status: 403 }
-      )
-    }
-
-    const { email, password, firstName, lastName, role } = await request.json()
+    const { email, password, confirmPassword, firstName, lastName, role } = await request.json();
 
     // Validaciones básicas
-    if (!email || !password || !firstName || !lastName || !role) {
+    if (!email || !password || !firstName || !lastName) {
       return NextResponse.json(
-        { message: 'Todos los campos son requeridos' },
+        { error: 'Email, password, firstName y lastName son requeridos' },
         { status: 400 }
-      )
+      );
     }
 
-    // Validar formato de email
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailRegex.test(email)) {
+    // Validar que las contraseñas coincidan
+    if (password !== confirmPassword) {
       return NextResponse.json(
-        { message: 'Email inválido' },
+        { error: 'Las contraseñas no coinciden' },
         { status: 400 }
-      )
+      );
     }
 
-    // Validar contraseña
-    if (password.length < 8) {
-      return NextResponse.json(
-        { message: 'La contraseña debe tener al menos 8 caracteres' },
-        { status: 400 }
-      )
+    // Combinar nombre completo
+    const fullName = `${firstName} ${lastName}`.trim();
+
+    const cognitoClient = new CognitoIdentityProviderClient({
+      region: cognitoConfig.region,
+    });
+
+    // Generar SECRET_HASH
+    const secretHash = getSecretHash(email);
+
+    const signUpCommand = new SignUpCommand({
+      ClientId: cognitoConfig.clientId,
+      Username: email,
+      Password: password,
+      SecretHash: secretHash,
+      UserAttributes: [
+        {
+          Name: 'email',
+          Value: email,
+        },
+        {
+          Name: 'name',
+          Value: fullName,
+        },
+        {
+          Name: 'given_name',
+          Value: firstName,
+        },
+        {
+          Name: 'family_name',
+          Value: lastName,
+        },
+        // Descomenta esta línea después de configurar el atributo custom:role en Cognito
+        // {
+        //   Name: 'custom:role',
+        //   Value: role,
+        // },
+        {
+          Name: 'address',
+          Value: JSON.stringify({
+            street_address: '',
+            locality: '',
+            region: '',
+            postal_code: '',
+            country: ''
+          }),
+        },
+      ],
+    });
+
+    const result = await cognitoClient.send(signUpCommand);
+
+    return NextResponse.json({
+      message: 'Usuario registrado exitosamente. Verifica tu email para confirmar la cuenta.',
+      userSub: result.UserSub,
+    });
+
+  } catch (error: any) {
+    console.error('Error en Cognito:', error);
+    
+    // Manejo específico de errores de Cognito
+    let errorMessage = 'Error interno del servidor';
+    
+    if (error.name === 'UsernameExistsException') {
+      errorMessage = 'Este email ya está registrado';
+    } else if (error.name === 'InvalidPasswordException') {
+      errorMessage = 'La contraseña no cumple con los requisitos';
+    } else if (error.name === 'InvalidParameterException') {
+      errorMessage = 'Parámetros inválidos: ' + error.message;
+    } else if (error.name === 'NotAuthorizedException') {
+      errorMessage = 'Error de autorización: ' + error.message;
+    } else if (error.name === 'ResourceNotFoundException') {
+      errorMessage = 'User Pool no encontrado - verifica COGNITO_CLIENT_ID';
     }
-
-    // Validar rol
-    if (!['VENTAS', 'ADMIN', 'SUPERADMIN'].includes(role)) {
-      return NextResponse.json(
-        { message: 'Rol inválido' },
-        { status: 400 }
-      )
-    }
-
-    try {
-      // Crear usuario en Cognito
-      const signUpCommand = new SignUpCommand({
-        ClientId: process.env.AWS_COGNITO_CLIENT_ID!,
-        Username: email,
-        Password: password,
-        UserAttributes: [
-          { Name: 'email', Value: email },
-          { Name: 'given_name', Value: firstName },
-          { Name: 'family_name', Value: lastName },
-          { Name: 'custom:role', Value: role }
-        ]
-      })
-
-      const result = await cognitoClient.send(signUpCommand)
-
-      return NextResponse.json({
-        message: 'Usuario registrado exitosamente. Verifica tu email para confirmar la cuenta.',
-        userSub: result.UserSub,
-        codeDeliveryDetails: result.CodeDeliveryDetails
-      })
-
-    } catch (cognitoError: any) {
-      console.error('Error en Cognito:', cognitoError)
-      
-      let message = 'Error al registrar usuario'
-      
-      if (cognitoError.name === 'UsernameExistsException') {
-        message = 'Ya existe una cuenta con este email'
-      } else if (cognitoError.name === 'InvalidPasswordException') {
-        message = 'La contraseña no cumple los requisitos de seguridad'
-      } else if (cognitoError.name === 'InvalidParameterException') {
-        message = 'Datos inválidos. Verifica la información ingresada.'
-      }
-
-      return NextResponse.json(
-        { message },
-        { status: 400 }
-      )
-    }
-
-  } catch (error) {
-    console.error('Error general en registro:', error)
+    
     return NextResponse.json(
-      { message: 'Error interno del servidor' },
-      { status: 500 }
-    )
+      { error: errorMessage },
+      { status: 400 }
+    );
   }
 }

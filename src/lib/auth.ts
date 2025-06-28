@@ -1,127 +1,145 @@
-// =====================================================
-// NEXTAUTH SIMPLIFICADO - src/lib/auth.ts
-// =====================================================
-
-import { NextAuthOptions } from 'next-auth'
-import CognitoProvider from 'next-auth/providers/cognito'
-import { EstadoUsuario, PrismaClient, RolUsuario } from '@prisma/client'
-
-const prisma = new PrismaClient()
-
-export const authOptions: NextAuthOptions = {
-  providers: [
-    CognitoProvider({
-      clientId: process.env.AWS_COGNITO_CLIENT_ID!,
-      clientSecret: process.env.AWS_COGNITO_CLIENT_SECRET!,
-      issuer: `https://cognito-idp.${process.env.AWS_REGION}.amazonaws.com/${process.env.AWS_COGNITO_USER_POOL_ID}`,
-      checks: ["pkce", "state"],
-    }),
-  ],
-  
-  pages: {
-    signIn: '/auth/signin',
-    error: '/auth/error',
-  },
-  
-  callbacks: {
-    async signIn({ user, account, profile }) {
-      if (account?.provider === 'cognito' && user.email) {
-        try {
-          // Verificar si el usuario existe en nuestra DB
-          let usuario = await prisma.usuario.findUnique({
-            where: { email: user.email }
-          })
-          
-          // Si no existe, crear el usuario automáticamente
-          if (!usuario && profile?.sub) {
-            // Extraer el rol del perfil de Cognito
-            const customAttributes = (profile as any)
-            const role = customAttributes['custom:role'] || 'VENTAS'
-            
-            usuario = await prisma.usuario.create({
-              data: {
-                cognitoId: profile.sub,
-                email: user.email,
-                nombre: (profile as any)?.given_name || user.name?.split(' ')[0] || 'Usuario',
-                apellido: (profile as any)?.family_name || user.name?.split(' ')[1] || '',
-                rol: role as 'SUPERADMIN' | 'ADMIN' | 'VENTAS',
-                estado: 'ACTIVO',
-                avatar: user.image,
-              }
-            })
-            
-            console.log('✅ Usuario creado automáticamente en DB:', {
-              id: usuario.id,
-              email: usuario.email,
-              rol: usuario.rol
-            })
-          } else if (usuario) {
-            // Actualizar fecha de último login
-            await prisma.usuario.update({
-              where: { id: usuario.id },
-              data: { fechaLogin: new Date() }
-            })
-          }
-          
-          return true
-        } catch (error) {
-          console.error('❌ Error en signIn callback:', error)
-          return false
-        }
-      }
-      return true
-    },
-    
-    async jwt({ token, user, account, profile }) {
-      if (account && user) {
-        try {
-          // Obtener información del usuario de la DB
-          const usuario = await prisma.usuario.findUnique({
-            where: { email: user.email! }
-          })
-          
-          if (usuario) {
-            token.userId = usuario.id
-            token.rol = usuario.rol
-            token.estado = usuario.estado
-            token.nombre = usuario.nombre
-            token.apellido = usuario.apellido
-          } else {
-            // Si por alguna razón no existe en DB, usar datos del perfil
-            const customAttributes = (profile as any) || {}
-            token.rol = customAttributes['custom:role'] || 'VENTAS'
-            token.estado = 'ACTIVO'
-            token.nombre = user.name?.split(' ')[0] || 'Usuario'
-            token.apellido = user.name?.split(' ')[1] || ''
-          }
-        } catch (error) {
-          console.error('❌ Error en JWT callback:', error)
-          // Valores por defecto en caso de error
-          token.rol = 'VENTAS'
-          token.estado = 'ACTIVO'
-          token.nombre = user.name?.split(' ')[0] || 'Usuario'
-          token.apellido = user.name?.split(' ')[1] || ''
-        }
-      }
-      return token
-    },
-    
-    async session({ session, token }) {
-      if (token && session.user) {
-        session.user.id = token.userId as string
-        session.user.rol = token.rol as RolUsuario
-        session.user.estado = token.estado as EstadoUsuario
-        session.user.nombre = token.nombre as string
-        session.user.apellido = token.apellido as string
-      }
-      return session
-    },
-  },
-  
-  session: {
-    strategy: 'jwt',
-    maxAge: 24 * 60 * 60, // 24 horas
-  },
-  
-  secret: process.env.NEXTAUTH_SECRET,
+// lib/auth.ts
+interface AuthTokens {
+  accessToken: string;
+  idToken: string;
+  refreshToken: string;
 }
+
+interface User {
+  email: string;
+  name: string;
+  given_name: string;
+  family_name: string;
+  sub: string;
+  [key: string]: any;
+}
+
+export const authUtils = {
+  // Guardar tokens
+  setTokens: (tokens: AuthTokens) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('accessToken', tokens.accessToken);
+      localStorage.setItem('idToken', tokens.idToken);
+      localStorage.setItem('refreshToken', tokens.refreshToken);
+    }
+  },
+
+  // Obtener tokens
+  getTokens: (): AuthTokens | null => {
+    if (typeof window === 'undefined') return null;
+    
+    const accessToken = localStorage.getItem('accessToken');
+    const idToken = localStorage.getItem('idToken');
+    const refreshToken = localStorage.getItem('refreshToken');
+
+    if (accessToken && idToken && refreshToken) {
+      return { accessToken, idToken, refreshToken };
+    }
+    return null;
+  },
+
+  // Limpiar tokens (logout)
+  clearTokens: () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('idToken');
+      localStorage.removeItem('refreshToken');
+    }
+  },
+
+  // Verificar si está autenticado
+  isAuthenticated: (): boolean => {
+    const tokens = authUtils.getTokens();
+    if (!tokens) return false;
+
+    // Verificar si el token no ha expirado
+    try {
+      const tokenData = authUtils.decodeToken(tokens.idToken);
+      const currentTime = Math.floor(Date.now() / 1000);
+      return tokenData.exp > currentTime;
+    } catch {
+      return false;
+    }
+  },
+
+  // Decodificar JWT para obtener información del usuario
+  decodeToken: (token: string) => {
+    try {
+      const base64Url = token.split('.')[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const jsonPayload = decodeURIComponent(
+        atob(base64)
+          .split('')
+          .map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+          .join('')
+      );
+      return JSON.parse(jsonPayload);
+    } catch (error) {
+      console.error('Error decoding token:', error);
+      return null;
+    }
+  },
+
+  // Obtener información del usuario actual
+  getCurrentUser: (): User | null => {
+    const tokens = authUtils.getTokens();
+    if (!tokens) return null;
+
+    const idTokenData = authUtils.decodeToken(tokens.idToken);
+    if (!idTokenData) return null;
+
+    return {
+      email: idTokenData.email,
+      name: idTokenData.name,
+      given_name: idTokenData.given_name,
+      family_name: idTokenData.family_name,
+      sub: idTokenData.sub,
+      // Incluir otros campos que puedas necesitar
+      address: idTokenData.address,
+      'custom:role': idTokenData['custom:role'],
+    };
+  },
+
+  // Refrescar tokens automáticamente
+  refreshTokens: async (): Promise<boolean> => {
+    const tokens = authUtils.getTokens();
+    if (!tokens?.refreshToken) return false;
+
+    try {
+      const response = await fetch('/api/auth/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken: tokens.refreshToken }),
+      });
+
+      if (response.ok) {
+        const newTokens = await response.json();
+        authUtils.setTokens(newTokens);
+        return true;
+      }
+    } catch (error) {
+      console.error('Error refreshing tokens:', error);
+    }
+
+    // Si falla el refresh, limpiar tokens
+    authUtils.clearTokens();
+    return false;
+  },
+
+  // Logout completo
+  logout: async () => {
+    authUtils.clearTokens();
+    
+    // Opcional: llamar al endpoint de logout del servidor
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (error) {
+      console.error('Error during logout:', error);
+    }
+    
+    // Redirigir al login
+    if (typeof window !== 'undefined') {
+      window.location.href = '/auth/signin';
+    }
+  },
+};

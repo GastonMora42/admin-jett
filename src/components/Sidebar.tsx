@@ -1,281 +1,112 @@
-// =====================================================
-// SIDEBAR COMPONENT MEJORADO - src/components/Sidebar.tsx
-// =====================================================
-
+// src/components/Sidebar.tsx - Versión migrada
 'use client'
 
-import React, { useState } from 'react'
+import React from 'react'
+import { useAuth } from '@/components/AuthProvider' // ← Cambiado de next-auth
+import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
-import { useSession, signOut } from 'next-auth/react'
-import { motion } from 'framer-motion'
 import Image from 'next/image'
 import { 
-  LayoutDashboard,
+  LayoutDashboard, 
   Users, 
   FolderOpen, 
-  CreditCard, 
-  Settings,
-  HelpCircle,
-  ChevronLeft,
-  ChevronRight,
-  DollarSign,
-  BarChart3,
-  Calendar,
-  Bell,
-  Shield,
+  DollarSign, 
+  Settings, 
   LogOut,
-  Crown,
-  Briefcase,
   User
 } from 'lucide-react'
-import { RolUsuario } from '@/types/auth'
-import { NotificationCenter } from '@/components/NotificationCenter'
 
-const menuItems = [
-  {
-    title: 'Principal',
-    items: [
-      { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['SUPERADMIN', 'ADMIN', 'VENTAS'] },
-      { href: '/clientes', icon: Users, label: 'Clientes', roles: ['SUPERADMIN', 'ADMIN', 'VENTAS'] },
-      { href: '/proyectos', icon: FolderOpen, label: 'Proyectos', roles: ['SUPERADMIN', 'ADMIN', 'VENTAS'] },
-      { href: '/pagos', icon: CreditCard, label: 'Pagos', roles: ['SUPERADMIN', 'ADMIN', 'VENTAS'] },
-    ]
-  },
-  {
-    title: 'Reportes',
-    items: [
-      { href: '/facturacion', icon: DollarSign, label: 'Facturación', roles: ['SUPERADMIN', 'ADMIN', 'VENTAS'] },
-      { href: '/analytics', icon: BarChart3, label: 'Analytics', roles: ['SUPERADMIN', 'ADMIN', 'VENTAS'] },
-      { href: '/calendario', icon: Calendar, label: 'Calendario', roles: ['SUPERADMIN', 'ADMIN', 'VENTAS'] },
-    ]
-  },
-  {
-    title: 'Administración',
-    items: [
-      { href: '/admin/usuarios', icon: Shield, label: 'Usuarios', roles: ['SUPERADMIN', 'ADMIN'] },
-    ]
-  },
-  {
-    title: 'Sistema',
-    items: [
-      { href: '/configuracion', icon: Settings, label: 'Configuración', roles: ['SUPERADMIN'] },
-      { href: '/ayuda', icon: HelpCircle, label: 'Ayuda', roles: ['SUPERADMIN', 'ADMIN', 'VENTAS'] },
-    ]
-  }
-]
-
-export const Sidebar = () => {
-  const [isCollapsed, setIsCollapsed] = useState(false)
+export const Sidebar: React.FC = () => {
+  const { user, logout } = useAuth() // ← Cambiado de useSession
   const pathname = usePathname()
-  const { data: session } = useSession()
+  const router = useRouter()
 
-  const getRolIcon = (rol: RolUsuario) => {
-    switch (rol) {
-      case 'SUPERADMIN': return <Crown className="w-4 h-4" />
-      case 'ADMIN': return <Shield className="w-4 h-4" />
-      case 'VENTAS': return <Briefcase className="w-4 h-4" />
-      default: return <User className="w-4 h-4" />
-    }
+  // Manejar logout
+  const handleLogout = async () => {
+    await logout()
+    router.push('/auth/signin')
   }
 
-  const getRolColor = (rol: RolUsuario) => {
-    switch (rol) {
-      case 'SUPERADMIN': return 'text-purple-400'
-      case 'ADMIN': return 'text-blue-400'
-      case 'VENTAS': return 'text-green-400'
-      default: return 'text-gray-400'
-    }
-  }
-
-  const canAccessItem = (requiredRoles: string[]) => {
-    if (!session?.user?.rol) return false
-    return requiredRoles.includes(session.user.rol)
-  }
-
-  // Si no hay sesión, no mostrar sidebar
-  if (!session?.user) {
-    return null
-  }
+  const navigation = [
+    { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+    { name: 'Clientes', href: '/clients', icon: Users },
+    { name: 'Proyectos', href: '/projects', icon: FolderOpen },
+    { name: 'Facturación', href: '/billing', icon: DollarSign },
+    { name: 'Configuración', href: '/settings', icon: Settings },
+  ]
 
   return (
-    <motion.aside
-      animate={{ width: isCollapsed ? 80 : 256 }}
-      className="fixed left-0 top-0 h-full bg-black/40 backdrop-blur-xl border-r border-white/10 z-40"
-    >
+    <div className="fixed inset-y-0 left-0 w-64 bg-black/90 backdrop-blur-xl border-r border-white/10 z-20">
       <div className="flex flex-col h-full">
-        {/* Header */}
-        <div className="p-6 border-b border-white/10">
-          <motion.div 
-            className="flex items-center justify-between"
-            animate={{ justifyContent: isCollapsed ? 'center' : 'space-between' }}
-          >
-            {!isCollapsed && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="flex items-center space-x-3"
-              >
-                <div className="w-8 h-8 relative">
-                  <Image
-                    src="/logo.webp"
-                    alt="Jett Labs Logo"
-                    fill
-                    className="object-contain"
-                  />
-                </div>
-                <div>
-                  <h1 className="text-xl font-bold text-white">Jett Labs</h1>
-                  <p className="text-xs text-gray-400">Software Factory</p>
-                </div>
-              </motion.div>
-            )}
-            {isCollapsed && (
-              <div className="w-8 h-8 relative">
-                <Image
-                  src="/logo.webp"
-                  alt="Jett Labs Logo"
-                  fill
-                  className="object-contain"
-                />
-              </div>
-            )}
-            <div className="flex items-center space-x-2">
-              {!isCollapsed && <NotificationCenter />}
-              <button
-                onClick={() => setIsCollapsed(!isCollapsed)}
-                className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
-              >
-                {isCollapsed ? (
-                  <ChevronRight className="w-4 h-4 text-gray-400" />
-                ) : (
-                  <ChevronLeft className="w-4 h-4 text-gray-400" />
-                )}
-              </button>
-            </div>
-          </motion.div>
+        {/* Logo */}
+        <div className="flex items-center space-x-3 p-6 border-b border-white/10">
+          <div className="w-8 h-8 relative">
+            <Image
+              src="/logo.webp"
+              alt="Jett Labs"
+              fill
+              className="object-contain rounded-lg"
+            />
+          </div>
+          <div>
+            <h2 className="text-lg font-bold text-white">Jett Labs</h2>
+            <p className="text-xs text-gray-400">Admin Panel</p>
+          </div>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-4 space-y-6 overflow-y-auto">
-          {menuItems.map((section, sectionIndex) => {
-            // Filtrar items basado en permisos
-            const visibleItems = section.items.filter(item => canAccessItem(item.roles))
+        <nav className="flex-1 p-4 space-y-2">
+          {navigation.map((item) => {
+            const isActive = pathname === item.href
+            const Icon = item.icon
             
-            if (visibleItems.length === 0) return null
-
             return (
-              <div key={section.title}>
-                {!isCollapsed && (
-                  <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
-                    {section.title}
-                  </h2>
-                )}
-                <ul className="space-y-1">
-                  {visibleItems.map((item) => {
-                    const isActive = pathname === item.href
-                    return (
-                      <li key={item.href}>
-                        <Link href={item.href}>
-                          <motion.div
-                            whileHover={{ x: 4 }}
-                            className={`flex items-center space-x-3 p-3 rounded-lg transition-colors relative group ${
-                              isActive
-                                ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
-                                : 'text-gray-400 hover:text-white hover:bg-white/5'
-                            }`}
-                          >
-                            <item.icon className="w-5 h-5 flex-shrink-0" />
-                            {!isCollapsed && (
-                              <span className="font-medium">{item.label}</span>
-                            )}
-                            
-                            {/* Tooltip para modo colapsado */}
-                            {isCollapsed && (
-                              <div className="absolute left-full ml-2 px-3 py-2 bg-black/90 backdrop-blur-sm text-white text-sm rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 border border-white/20">
-                                {item.label}
-                              </div>
-                            )}
-                          </motion.div>
-                        </Link>
-                      </li>
-                    )
-                  })}
-                </ul>
-              </div>
+              <Link
+                key={item.name}
+                href={item.href}
+                className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
+                  isActive
+                    ? 'bg-blue-600 text-white'
+                    : 'text-gray-300 hover:bg-white/10 hover:text-white'
+                }`}
+              >
+                <Icon className="w-5 h-5" />
+                <span className="font-medium">{item.name}</span>
+              </Link>
             )
           })}
         </nav>
 
-        {/* User Profile */}
+        {/* User section */}
         <div className="p-4 border-t border-white/10">
-          {!isCollapsed ? (
-            <div className="space-y-4">
-              {/* User Info */}
-              <div className="flex items-center space-x-3 p-3 bg-white/5 rounded-lg">
-                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <span className="text-white font-semibold text-sm">
-                    {session.user.nombre?.charAt(0)}{session.user.apellido?.charAt(0)}
-                  </span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-white font-medium text-sm truncate">
-                    {session.user.nombre} {session.user.apellido}
-                  </p>
-                  <div className={`flex items-center space-x-1 ${getRolColor(session.user.rol)}`}>
-                    {getRolIcon(session.user.rol)}
-                    <span className="text-xs">{session.user.rol}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Actions */}
-              <div className="space-y-2">
-                <Link href="/perfil" className="block">
-                  <div className="flex items-center space-x-2 p-2 text-gray-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors">
-                    <User className="w-4 h-4" />
-                    <span className="text-sm">Mi Perfil</span>
-                  </div>
-                </Link>
-                
-                <button
-                  onClick={() => signOut({ callbackUrl: '/auth/signin' })}
-                  className="flex items-center space-x-2 p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors w-full"
-                >
-                  <LogOut className="w-4 h-4" />
-                  <span className="text-sm">Cerrar Sesión</span>
-                </button>
-              </div>
+          <div className="flex items-center space-x-3 mb-4">
+            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+              <User className="w-5 h-5 text-white" />
             </div>
-          ) : (
-            <div className="flex flex-col items-center space-y-3">
-              {/* Notificaciones */}
-              <NotificationCenter />
-              
-              {/* Avatar */}
-              <Link href="/perfil">
-                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center cursor-pointer hover:scale-105 transition-transform">
-                  <span className="text-white font-semibold text-sm">
-                    {session.user.nombre?.charAt(0)}{session.user.apellido?.charAt(0)}
-                  </span>
+            <div className="flex-1">
+              <div className="text-sm font-medium text-white">
+                {user?.given_name || user?.name || 'Usuario'}
+              </div>
+              <div className="text-xs text-gray-400">
+                {user?.email}
+              </div>
+              {user?.['custom:role'] && (
+                <div className="text-xs text-blue-400 capitalize">
+                  {user['custom:role'].toLowerCase()}
                 </div>
-              </Link>
-              
-              {/* Logout */}
-              <button
-                onClick={() => signOut({ callbackUrl: '/auth/signin' })}
-                className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors group relative"
-              >
-                <LogOut className="w-4 h-4" />
-                <div className="absolute left-full ml-2 px-3 py-2 bg-black/90 backdrop-blur-sm text-white text-sm rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 border border-white/20">
-                  Cerrar Sesión
-                </div>
-              </button>
+              )}
             </div>
-          )}
+          </div>
+          
+          <button
+            onClick={handleLogout}
+            className="flex items-center space-x-3 w-full px-4 py-3 rounded-lg text-gray-300 hover:bg-red-500/20 hover:text-red-400 transition-colors"
+          >
+            <LogOut className="w-5 h-5" />
+            <span className="font-medium">Cerrar Sesión</span>
+          </button>
         </div>
       </div>
-    </motion.aside>
+    </div>
   )
 }

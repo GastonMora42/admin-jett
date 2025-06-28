@@ -1,11 +1,6 @@
-// =====================================================
-// PÁGINA DE LOGIN SIMPLIFICADA - src/app/auth/signin/page.tsx
-// =====================================================
-
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { signIn, getSession } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { Eye, EyeOff, LogIn, AlertCircle, ArrowLeft, Shield, Zap, Users, UserPlus, CheckCircle } from 'lucide-react'
@@ -28,12 +23,15 @@ export default function SignInPage() {
   const urlMessage = searchParams.get('message')
   
   useEffect(() => {
-    // Verificar si ya está autenticado
-    getSession().then((session) => {
-      if (session) {
+    // Verificar si ya está autenticado (usando localStorage en lugar de NextAuth)
+    const checkAuth = () => {
+      const accessToken = localStorage.getItem('accessToken');
+      if (accessToken) {
         router.push(callbackUrl)
       }
-    })
+    }
+    
+    checkAuth()
 
     // Verificar si el registro está habilitado
     checkRegistrationStatus()
@@ -61,26 +59,42 @@ export default function SignInPage() {
     setMessage('')
 
     try {
-      const result = await signIn('cognito', {
-        email,
-        password,
-        redirect: false,
-        callbackUrl
-      })
+      // Usar nuestro API directo en lugar de NextAuth
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email,
+          password,
+        }),
+      });
 
-      if (result?.error) {
-        if (result.error.includes('UserNotConfirmedException')) {
+      const data = await response.json();
+
+      if (!response.ok) {
+        // Manejar errores específicos
+        if (data.error?.includes('UserNotConfirmedException') || data.error?.includes('no confirmado')) {
           setError('Tu cuenta no está confirmada. Revisa tu email para el código de confirmación.')
-        } else if (result.error.includes('NotAuthorizedException')) {
+        } else if (data.error?.includes('NotAuthorizedException') || data.error?.includes('incorrectos')) {
           setError('Email o contraseña incorrectos.')
-        } else if (result.error.includes('UserNotFoundException')) {
+        } else if (data.error?.includes('UserNotFoundException') || data.error?.includes('no encontrado')) {
           setError('No existe una cuenta con este email.')
         } else {
-          setError('Error al iniciar sesión. Verifica tus credenciales.')
+          setError(data.error || 'Error al iniciar sesión. Verifica tus credenciales.')
         }
-      } else if (result?.ok) {
-        router.push(callbackUrl)
+        return;
       }
+
+      // Guardar tokens en localStorage
+      localStorage.setItem('accessToken', data.accessToken);
+      localStorage.setItem('idToken', data.idToken);
+      localStorage.setItem('refreshToken', data.refreshToken);
+
+      // Redirigir al dashboard
+      router.push(callbackUrl);
+      
     } catch (error) {
       setError('Error de conexión. Por favor, intenta más tarde.')
     } finally {
