@@ -1,10 +1,10 @@
 // =====================================================
-// API PAGOS - src/app/api/pagos/route.ts
+// API PAGOS CORREGIDA - src/app/api/pagos/route.ts
 // =====================================================
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { authOptions } from '@/lib/nextauth'
 import { PrismaClient } from '@prisma/client'
 
 const prisma = new PrismaClient()
