@@ -7,6 +7,7 @@ import { Eye, EyeOff, LogIn, AlertCircle, ArrowLeft, Shield, Zap, Users, UserPlu
 import { SilkBackground } from '@/components/SilkBackground'
 import Link from 'next/link'
 import Image from 'next/image'
+import { useAuth } from '@/components/AuthProvider' // Usar el contexto
 
 export default function SignInPage() {
   const [email, setEmail] = useState('')
@@ -15,32 +16,41 @@ export default function SignInPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
-  const [registrationEnabled, setRegistrationEnabled] = useState(false)
+  const [registrationEnabled, setRegistrationEnabled] = useState<boolean | null>(null) // null = no verificado aún
   
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { login, isAuthenticated, isLoading, forceRefresh } = useAuth() // Usar el contexto
+  
   const callbackUrl = searchParams.get('callbackUrl') || '/dashboard'
   const urlMessage = searchParams.get('message')
   
   useEffect(() => {
-    // Verificar si ya está autenticado (usando localStorage en lugar de NextAuth)
-    const checkAuth = () => {
-      const accessToken = localStorage.getItem('accessToken');
-      if (accessToken) {
-        router.push(callbackUrl)
-      }
+    // Solo verificar redirección si no está en proceso de loading
+    if (isLoading) {
+      console.log('⏳ Auth still loading, waiting...')
+      return
     }
-    
-    checkAuth()
 
-    // Verificar si el registro está habilitado
-    checkRegistrationStatus()
+    // Si ya está autenticado, redirigir inmediatamente
+    if (isAuthenticated) {
+      console.log('✅ User already authenticated, redirecting to:', callbackUrl)
+      router.push(callbackUrl)
+      return
+    }
+
+    console.log('👤 User not authenticated, showing login form')
+
+    // Verificar si el registro está habilitado solo una vez
+    if (registrationEnabled === null) { // Solo llamar si aún no se ha verificado
+      checkRegistrationStatus()
+    }
 
     // Mostrar mensaje de URL si existe
     if (urlMessage === 'account-confirmed') {
       setMessage('¡Cuenta confirmada exitosamente! Ya puedes iniciar sesión.')
     }
-  }, [router, callbackUrl, urlMessage])
+  }, [isAuthenticated, isLoading, router, callbackUrl, urlMessage, registrationEnabled])
 
   const checkRegistrationStatus = async () => {
     try {
@@ -59,47 +69,65 @@ export default function SignInPage() {
     setMessage('')
 
     try {
-      // Usar nuestro API directo en lugar de NextAuth
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email,
-          password,
-        }),
-      });
+      console.log('🔐 Starting login process...')
+      
+      // Usar la función de login del contexto
+      const result = await login(email, password)
 
-      const data = await response.json();
-
-      if (!response.ok) {
+      if (result.success) {
+        console.log('✅ Login successful, forcing auth refresh...')
+        
+        // Forzar actualización del estado de autenticación
+        await forceRefresh()
+        
+        console.log('✅ Auth state refreshed, redirecting to:', callbackUrl)
+        
+        // Pequeño delay para asegurar que el estado se ha actualizado
+        setTimeout(() => {
+          router.push(callbackUrl)
+        }, 100)
+      } else {
         // Manejar errores específicos
-        if (data.error?.includes('UserNotConfirmedException') || data.error?.includes('no confirmado')) {
+        if (result.error?.includes('UserNotConfirmedException') || result.error?.includes('no confirmado')) {
           setError('Tu cuenta no está confirmada. Revisa tu email para el código de confirmación.')
-        } else if (data.error?.includes('NotAuthorizedException') || data.error?.includes('incorrectos')) {
+        } else if (result.error?.includes('NotAuthorizedException') || result.error?.includes('incorrectos')) {
           setError('Email o contraseña incorrectos.')
-        } else if (data.error?.includes('UserNotFoundException') || data.error?.includes('no encontrado')) {
+        } else if (result.error?.includes('UserNotFoundException') || result.error?.includes('no encontrado')) {
           setError('No existe una cuenta con este email.')
         } else {
-          setError(data.error || 'Error al iniciar sesión. Verifica tus credenciales.')
+          setError(result.error || 'Error al iniciar sesión. Verifica tus credenciales.')
         }
-        return;
       }
-
-      // Guardar tokens en localStorage
-      localStorage.setItem('accessToken', data.accessToken);
-      localStorage.setItem('idToken', data.idToken);
-      localStorage.setItem('refreshToken', data.refreshToken);
-
-      // Redirigir al dashboard
-      router.push(callbackUrl);
-      
     } catch (error) {
+      console.error('❌ Unexpected error during login:', error)
       setError('Error de conexión. Por favor, intenta más tarde.')
     } finally {
       setLoading(false)
     }
+  }
+
+  // Si está cargando la autenticación, mostrar loading
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-black">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-400">Verificando sesión...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Si ya está autenticado, no mostrar el formulario
+  if (isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-black">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-green-500/20 border-t-green-500 rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-400">Redirigiendo...</p>
+        </div>
+      </div>
+    )
   }
 
   const features = [
@@ -341,7 +369,7 @@ export default function SignInPage() {
               </form>
 
               {/* Registration link */}
-              {registrationEnabled && (
+              {registrationEnabled === true && (
                 <div className="mt-6 pt-6 border-t border-white/10 text-center">
                   <p className="text-gray-400 text-sm mb-3">
                     ¿No tienes una cuenta?

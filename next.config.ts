@@ -1,15 +1,17 @@
-
 // =====================================================
-// ARCHIVO DE CONFIGURACIÓN - next.config.js
+// ARCHIVO DE CONFIGURACIÓN - next.config.ts
 // =====================================================
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    serverComponentsExternalPackages: ['@prisma/client'],
-  },
+  serverExternalPackages: ['@prisma/client'], // Actualizado desde experimental.serverComponentsExternalPackages
   images: {
-    domains: ['localhost'],
+    remotePatterns: [ // Actualizado desde domains
+      {
+        protocol: 'http',
+        hostname: 'localhost',
+      },
+    ],
   },
   // Configuración para production
   env: {

@@ -6,7 +6,7 @@
 
 import React, { useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { useSession } from 'next-auth/react'
+import { useAuth } from '@/components/AuthProvider' // ← Cambiado de next-auth
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -22,18 +22,18 @@ import {
 import { SilkBackground } from '@/components/SilkBackground'
 
 export default function LandingPage() {
-  const { data: session, status } = useSession()
+  const { user, isAuthenticated, isLoading } = useAuth() // ← Cambiado de useSession
   const router = useRouter()
 
   // Redirigir si ya está autenticado
   useEffect(() => {
-    if (status === 'authenticated' && session) {
+    if (isAuthenticated && user) {
       router.push('/dashboard')
     }
-  }, [session, status, router])
+  }, [isAuthenticated, user, router])
 
   // Mostrar loading mientras verifica la sesión
-  if (status === 'loading') {
+  if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-black">
         <div className="text-center">
@@ -45,7 +45,7 @@ export default function LandingPage() {
   }
 
   // Si ya está autenticado, no mostrar nada (será redirigido)
-  if (session) {
+  if (isAuthenticated && user) {
     return null
   }
 

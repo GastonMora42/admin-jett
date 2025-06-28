@@ -1,7 +1,7 @@
 // components/AuthProvider.tsx
 'use client';
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { authUtils } from '@/lib/auth';
 
@@ -22,6 +22,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   refreshAuth: () => Promise<boolean>;
+  forceRefresh: () => Promise<void>; // Nueva función
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -34,48 +35,107 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [hasInitialized, setHasInitialized] = useState<boolean>(false);
   
   const router = useRouter();
   const pathname = usePathname();
+  const isRedirecting = useRef(false);
 
   // Rutas que requieren autenticación
-  const protectedRoutes = ['/dashboard', '/profile', '/admin', '/projects', '/clients'];
+  const protectedRoutes = ['/dashboard', '/profile', '/admin', '/projects', '/clients', '/clientes', '/proyectos', '/pagos', '/facturacion', '/analytics', '/configuracion'];
   
   // Rutas que solo pueden acceder usuarios no autenticados
   const publicOnlyRoutes = ['/auth/signin', '/auth/register'];
 
-  useEffect(() => {
-    const checkAuth = async () => {
+  // Rutas completamente públicas
+  const publicRoutes = ['/', '/auth/error', '/auth/suspended', '/auth/unauthorized', '/auth/confirm'];
+
+  const checkAuth = async () => {
+    try {
       const authenticated = authUtils.isAuthenticated();
       const userData = authUtils.getCurrentUser();
       
+      console.log('🔍 Checking auth:', { authenticated, userData: !!userData, pathname });
+      
       setIsAuthenticated(authenticated);
       setUser(userData);
+      
+      return { authenticated, userData };
+    } catch (error) {
+      console.error('❌ Error checking auth:', error);
+      setIsAuthenticated(false);
+      setUser(null);
+      return { authenticated: false, userData: null };
+    }
+  };
+
+  // Inicialización inicial
+  useEffect(() => {
+    const initAuth = async () => {
+      console.log('🚀 Initializing auth...');
+      setIsLoading(true);
+      
+      await checkAuth();
+      
       setIsLoading(false);
-
-      // Redirigir según el estado de autenticación y la ruta actual
-      const isProtectedRoute = protectedRoutes.some(route => pathname.startsWith(route));
-      const isPublicOnlyRoute = publicOnlyRoutes.some(route => pathname.startsWith(route));
-
-      if (isProtectedRoute && !authenticated) {
-        // Si está en una ruta protegida sin autenticación, redirigir al login
-        router.push('/auth/signin?callbackUrl=' + encodeURIComponent(pathname));
-      } else if (isPublicOnlyRoute && authenticated) {
-        // Si está en una ruta pública estando autenticado, redirigir al dashboard
-        router.push('/dashboard');
-      }
+      setHasInitialized(true);
+      console.log('✅ Auth initialized');
     };
 
-    checkAuth();
+    initAuth();
 
-    // Verificar autenticación cada minuto
-    const interval = setInterval(checkAuth, 60000);
+    // Verificar autenticación cada 5 minutos (no cada minuto para evitar spam)
+    const interval = setInterval(checkAuth, 5 * 60 * 1000);
     
     return () => clearInterval(interval);
-  }, [pathname, router]);
+  }, []);
+
+  // Manejar redirecciones solo después de la inicialización
+  useEffect(() => {
+    if (!hasInitialized || isLoading || isRedirecting.current) {
+      return;
+    }
+
+    const handleRedirection = () => {
+      const isProtectedRoute = protectedRoutes.some(route => pathname.startsWith(route));
+      const isPublicOnlyRoute = publicOnlyRoutes.some(route => pathname.startsWith(route));
+      const isPublicRoute = publicRoutes.includes(pathname) || pathname.startsWith('/auth/');
+
+      console.log('🎯 Route check:', { 
+        pathname, 
+        isAuthenticated, 
+        isProtectedRoute, 
+        isPublicOnlyRoute, 
+        isPublicRoute 
+      });
+
+      // Solo redirigir a login si es una ruta protegida y NO está autenticado
+      if (isProtectedRoute && !isAuthenticated) {
+        console.log('🔒 Redirecting to login: protected route without auth');
+        isRedirecting.current = true;
+        router.push('/auth/signin?callbackUrl=' + encodeURIComponent(pathname));
+        setTimeout(() => { isRedirecting.current = false; }, 2000);
+      } 
+      // NO redirigir automáticamente desde rutas públicas cuando está autenticado
+      // Dejar que cada página maneje su propia lógica de redirección
+      // else if (isPublicOnlyRoute && isAuthenticated) {
+      //   console.log('📊 Redirecting to dashboard: public-only route with auth');
+      //   isRedirecting.current = true;
+      //   router.push('/dashboard');
+      //   setTimeout(() => { isRedirecting.current = false; }, 2000);
+      // }
+      // Para rutas públicas, no hacer nada
+    };
+
+    // Delay para evitar redirecciones inmediatas
+    const timeoutId = setTimeout(handleRedirection, 200);
+    
+    return () => clearTimeout(timeoutId);
+  }, [pathname, isAuthenticated, hasInitialized, isLoading, router]);
 
   const login = async (email: string, password: string) => {
     try {
+      console.log('🔐 Attempting login...');
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -95,18 +155,27 @@ export function AuthProvider({ children }: AuthProviderProps) {
         refreshToken: data.refreshToken,
       });
 
-      // Actualizar estado
-      const userData = authUtils.getCurrentUser();
-      setUser(userData);
-      setIsAuthenticated(true);
-
+      // Actualizar estado inmediatamente
+      const { authenticated, userData } = await checkAuth();
+      
+      if (authenticated && userData) {
+        console.log('✅ Login successful, updating state immediately');
+        setUser(userData);
+        setIsAuthenticated(true);
+        setHasInitialized(true);
+      }
+      
+      console.log('✅ Login result:', { authenticated, userData: !!userData });
+      
       return { success: true };
     } catch (error: any) {
+      console.error('❌ Login error:', error);
       return { success: false, error: error.message };
     }
   };
 
   const logout = async () => {
+    console.log('🚪 Logging out...');
     await authUtils.logout();
     setUser(null);
     setIsAuthenticated(false);
@@ -115,14 +184,19 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const refreshAuth = async () => {
     const success = await authUtils.refreshTokens();
     if (success) {
-      const userData = authUtils.getCurrentUser();
-      setUser(userData);
-      setIsAuthenticated(true);
+      const { authenticated, userData } = await checkAuth();
+      return authenticated;
     } else {
       setUser(null);
       setIsAuthenticated(false);
     }
     return success;
+  };
+
+  const forceRefresh = async () => {
+    console.log('🔄 Force refreshing auth state...');
+    const { authenticated, userData } = await checkAuth();
+    console.log('🔄 Force refresh result:', { authenticated, userData: !!userData });
   };
 
   const value: AuthContextType = {
@@ -132,6 +206,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     login,
     logout,
     refreshAuth,
+    forceRefresh,
   };
 
   return (

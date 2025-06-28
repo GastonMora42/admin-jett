@@ -6,7 +6,7 @@
 
 import React from 'react'
 import { usePathname } from 'next/navigation'
-import { useAuth } from '@/components/AuthProvider' // ← Cambiado de next-auth
+import { useAuth } from '@/components/AuthProvider'
 import { SilkBackground } from '@/components/SilkBackground'
 import { Sidebar } from '@/components/Sidebar'
 import { AuthLoading } from '@/components/AuthLoading'
@@ -17,21 +17,34 @@ interface AppLayoutProps {
 
 export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const pathname = usePathname()
-  const { user, isAuthenticated, isLoading } = useAuth() // ← Cambiado de useSession
+  const { user, isAuthenticated, isLoading } = useAuth()
 
   // Rutas públicas que no requieren sidebar
-  const publicRoutes = ['/', '/auth/signin', '/auth/signup', '/auth/error', '/auth/suspended', '/auth/unauthorized', '/auth/register']
+  const publicRoutes = [
+    '/', 
+    '/auth/signin', 
+    '/auth/signup', 
+    '/auth/register', 
+    '/auth/error', 
+    '/auth/suspended', 
+    '/auth/unauthorized',
+    '/auth/confirm'
+  ]
   
   // Verificar si es una ruta pública
   const isPublicRoute = publicRoutes.includes(pathname) || pathname.startsWith('/auth/')
   
+  console.log('📄 AppLayout:', { pathname, isPublicRoute, isAuthenticated, isLoading });
+
   // Si está cargando la autenticación, mostrar loading
   if (isLoading) {
+    console.log('⏳ AppLayout: Showing loading');
     return <AuthLoading />
   }
 
   // Para rutas públicas, renderizar sin sidebar
   if (isPublicRoute) {
+    console.log('🌍 AppLayout: Rendering public route');
     return (
       <>
         {children}
@@ -41,12 +54,14 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
 
   // Para rutas protegidas, verificar autenticación
   if (!isAuthenticated || !user) {
-    // Si no está autenticado y trata de acceder a ruta protegida,
-    // el AuthProvider debería redirigir, pero por seguridad mostramos loading
+    console.log('🔒 AppLayout: Not authenticated, showing loading (will redirect)');
+    // No redirigir aquí, dejar que AuthProvider maneje las redirecciones
+    // Solo mostrar loading mientras AuthProvider hace su trabajo
     return <AuthLoading />
   }
 
   // Para rutas protegidas con usuario autenticado, mostrar layout completo
+  console.log('✅ AppLayout: Rendering authenticated layout');
   return (
     <div className="min-h-screen relative">
       <SilkBackground />

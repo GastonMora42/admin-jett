@@ -1,8 +1,8 @@
-// src/components/Sidebar.tsx - Versión migrada
+// src/components/Sidebar.tsx - Versión corregida
 'use client'
 
 import React from 'react'
-import { useAuth } from '@/components/AuthProvider' // ← Cambiado de next-auth
+import { useAuth } from '@/components/AuthProvider'
 import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -13,26 +13,32 @@ import {
   DollarSign, 
   Settings, 
   LogOut,
-  User
+  User,
+  Calendar,
+  BarChart3
 } from 'lucide-react'
 
 export const Sidebar: React.FC = () => {
-  const { user, logout } = useAuth() // ← Cambiado de useSession
+  const { user, logout } = useAuth()
   const pathname = usePathname()
   const router = useRouter()
 
   // Manejar logout
   const handleLogout = async () => {
+    console.log('🚪 Sidebar logout initiated');
     await logout()
-    router.push('/auth/signin')
+    // El logout ya maneja la redirección
   }
 
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-    { name: 'Clientes', href: '/clients', icon: Users },
-    { name: 'Proyectos', href: '/projects', icon: FolderOpen },
-    { name: 'Facturación', href: '/billing', icon: DollarSign },
-    { name: 'Configuración', href: '/settings', icon: Settings },
+    { name: 'Clientes', href: '/clientes', icon: Users },
+    { name: 'Proyectos', href: '/proyectos', icon: FolderOpen },
+    { name: 'Pagos', href: '/pagos', icon: DollarSign },
+    { name: 'Facturación', href: '/facturacion', icon: BarChart3 },
+    { name: 'Analytics', href: '/analytics', icon: BarChart3 },
+    { name: 'Calendario', href: '/calendario', icon: Calendar },
+    { name: 'Configuración', href: '/configuracion', icon: Settings },
   ]
 
   return (
@@ -50,7 +56,7 @@ export const Sidebar: React.FC = () => {
           </div>
           <div>
             <h2 className="text-lg font-bold text-white">Jett Labs</h2>
-            <p className="text-xs text-gray-400">Admin Panel</p>
+            <p className="text-xs text-gray-400">Management</p>
           </div>
         </div>
 
@@ -81,14 +87,16 @@ export const Sidebar: React.FC = () => {
         <div className="p-4 border-t border-white/10">
           <div className="flex items-center space-x-3 mb-4">
             <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
-              <User className="w-5 h-5 text-white" />
+              <span className="text-white font-semibold">
+                {user?.given_name?.charAt(0) || user?.name?.charAt(0) || 'U'}
+              </span>
             </div>
-            <div className="flex-1">
-              <div className="text-sm font-medium text-white">
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-white truncate">
                 {user?.given_name || user?.name || 'Usuario'}
               </div>
-              <div className="text-xs text-gray-400">
-                {user?.email}
+              <div className="text-xs text-gray-400 truncate">
+                {user?.email || 'email@example.com'}
               </div>
               {user?.['custom:role'] && (
                 <div className="text-xs text-blue-400 capitalize">
