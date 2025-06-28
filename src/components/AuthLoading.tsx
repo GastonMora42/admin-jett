@@ -1,5 +1,5 @@
 // =====================================================
-// AUTH LOADING - src/components/AuthLoading.tsx
+// AUTH LOADING ACTUALIZADO - src/components/AuthLoading.tsx
 // =====================================================
 
 'use client'
@@ -19,13 +19,13 @@ export const AuthLoading = () => {
         animate={{ opacity: 1, scale: 1 }}
         className="relative z-10 text-center"
       >
-        {/* Logo */}
+        {/* Logo con bordes redondeados */}
         <div className="mx-auto w-20 h-20 mb-6 relative">
           <Image
             src="/logo.webp"
-            alt="PayTracker Logo"
+            alt="Jett Labs Logo"
             fill
-            className="object-contain"
+            className="object-contain rounded-2xl"
           />
         </div>
 
@@ -45,7 +45,7 @@ export const AuthLoading = () => {
           transition={{ delay: 0.3 }}
         >
           <h2 className="text-xl font-semibold text-white mb-2">
-            PayTracker
+            Jett Labs
           </h2>
           <p className="text-gray-400 text-sm">
             Verificando autenticación...

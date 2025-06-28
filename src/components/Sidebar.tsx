@@ -1,5 +1,5 @@
 // =====================================================
-// SIDEBAR COMPONENT - src/components/Sidebar.tsx
+// SIDEBAR COMPONENT MEJORADO - src/components/Sidebar.tsx
 // =====================================================
 
 'use client'
@@ -26,7 +26,8 @@ import {
   Shield,
   LogOut,
   Crown,
-  Briefcase
+  Briefcase,
+  User
 } from 'lucide-react'
 import { RolUsuario } from '@/types/auth'
 import { NotificationCenter } from '@/components/NotificationCenter'
@@ -35,7 +36,7 @@ const menuItems = [
   {
     title: 'Principal',
     items: [
-      { href: '/', icon: LayoutDashboard, label: 'Dashboard', roles: ['SUPERADMIN', 'ADMIN', 'VENTAS'] },
+      { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['SUPERADMIN', 'ADMIN', 'VENTAS'] },
       { href: '/clientes', icon: Users, label: 'Clientes', roles: ['SUPERADMIN', 'ADMIN', 'VENTAS'] },
       { href: '/proyectos', icon: FolderOpen, label: 'Proyectos', roles: ['SUPERADMIN', 'ADMIN', 'VENTAS'] },
       { href: '/pagos', icon: CreditCard, label: 'Pagos', roles: ['SUPERADMIN', 'ADMIN', 'VENTAS'] },
@@ -58,7 +59,6 @@ const menuItems = [
   {
     title: 'Sistema',
     items: [
-      { href: '/notificaciones', icon: Bell, label: 'Notificaciones', roles: ['SUPERADMIN', 'ADMIN', 'VENTAS'] },
       { href: '/configuracion', icon: Settings, label: 'Configuración', roles: ['SUPERADMIN'] },
       { href: '/ayuda', icon: HelpCircle, label: 'Ayuda', roles: ['SUPERADMIN', 'ADMIN', 'VENTAS'] },
     ]
@@ -75,7 +75,7 @@ export const Sidebar = () => {
       case 'SUPERADMIN': return <Crown className="w-4 h-4" />
       case 'ADMIN': return <Shield className="w-4 h-4" />
       case 'VENTAS': return <Briefcase className="w-4 h-4" />
-      default: return <Users className="w-4 h-4" />
+      default: return <User className="w-4 h-4" />
     }
   }
 
@@ -91,6 +91,11 @@ export const Sidebar = () => {
   const canAccessItem = (requiredRoles: string[]) => {
     if (!session?.user?.rol) return false
     return requiredRoles.includes(session.user.rol)
+  }
+
+  // Si no hay sesión, no mostrar sidebar
+  if (!session?.user) {
+    return null
   }
 
   return (
@@ -115,7 +120,7 @@ export const Sidebar = () => {
                 <div className="w-8 h-8 relative">
                   <Image
                     src="/logo.webp"
-                    alt="PayTracker Logo"
+                    alt="Jett Labs Logo"
                     fill
                     className="object-contain"
                   />
@@ -130,7 +135,7 @@ export const Sidebar = () => {
               <div className="w-8 h-8 relative">
                 <Image
                   src="/logo.webp"
-                  alt="PayTracker Logo"
+                  alt="Jett Labs Logo"
                   fill
                   className="object-contain"
                 />
@@ -155,6 +160,7 @@ export const Sidebar = () => {
         {/* Navigation */}
         <nav className="flex-1 p-4 space-y-6 overflow-y-auto">
           {menuItems.map((section, sectionIndex) => {
+            // Filtrar items basado en permisos
             const visibleItems = section.items.filter(item => canAccessItem(item.roles))
             
             if (visibleItems.length === 0) return null
@@ -185,8 +191,9 @@ export const Sidebar = () => {
                               <span className="font-medium">{item.label}</span>
                             )}
                             
+                            {/* Tooltip para modo colapsado */}
                             {isCollapsed && (
-                              <div className="absolute left-full ml-2 px-2 py-1 bg-black/90 backdrop-blur-sm text-white text-sm rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+                              <div className="absolute left-full ml-2 px-3 py-2 bg-black/90 backdrop-blur-sm text-white text-sm rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 border border-white/20">
                                 {item.label}
                               </div>
                             )}
@@ -202,72 +209,72 @@ export const Sidebar = () => {
         </nav>
 
         {/* User Profile */}
-        {session?.user && (
-          <div className="p-4 border-t border-white/10">
-            {!isCollapsed ? (
-              <div className="space-y-4">
-                {/* User Info */}
-                <div className="flex items-center space-x-3 p-3 bg-white/5 rounded-lg">
-                  <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <span className="text-white font-semibold text-sm">
-                      {session.user.nombre?.charAt(0)}{session.user.apellido?.charAt(0)}
-                    </span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-white font-medium text-sm truncate">
-                      {session.user.nombre} {session.user.apellido}
-                    </p>
-                    <div className={`flex items-center space-x-1 ${getRolColor(session.user.rol)}`}>
-                      {getRolIcon(session.user.rol)}
-                      <span className="text-xs">{session.user.rol}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Actions */}
-                <div className="space-y-2">
-                  <Link href="/perfil" className="block">
-                    <div className="flex items-center space-x-2 p-2 text-gray-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors">
-                      <Users className="w-4 h-4" />
-                      <span className="text-sm">Mi Perfil</span>
-                    </div>
-                  </Link>
-                  
-                  <button
-                    onClick={() => signOut({ callbackUrl: '/auth/signin' })}
-                    className="flex items-center space-x-2 p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors w-full"
-                  >
-                    <LogOut className="w-4 h-4" />
-                    <span className="text-sm">Cerrar Sesión</span>
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center space-y-3">
-                {/* Notificaciones */}
-                <NotificationCenter />
-                
-                {/* Avatar */}
-                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+        <div className="p-4 border-t border-white/10">
+          {!isCollapsed ? (
+            <div className="space-y-4">
+              {/* User Info */}
+              <div className="flex items-center space-x-3 p-3 bg-white/5 rounded-lg">
+                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center flex-shrink-0">
                   <span className="text-white font-semibold text-sm">
                     {session.user.nombre?.charAt(0)}{session.user.apellido?.charAt(0)}
                   </span>
                 </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-white font-medium text-sm truncate">
+                    {session.user.nombre} {session.user.apellido}
+                  </p>
+                  <div className={`flex items-center space-x-1 ${getRolColor(session.user.rol)}`}>
+                    {getRolIcon(session.user.rol)}
+                    <span className="text-xs">{session.user.rol}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="space-y-2">
+                <Link href="/perfil" className="block">
+                  <div className="flex items-center space-x-2 p-2 text-gray-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors">
+                    <User className="w-4 h-4" />
+                    <span className="text-sm">Mi Perfil</span>
+                  </div>
+                </Link>
                 
-                {/* Logout */}
                 <button
                   onClick={() => signOut({ callbackUrl: '/auth/signin' })}
-                  className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors group relative"
+                  className="flex items-center space-x-2 p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors w-full"
                 >
                   <LogOut className="w-4 h-4" />
-                  <div className="absolute left-full ml-2 px-2 py-1 bg-black/90 backdrop-blur-sm text-white text-sm rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-                    Cerrar Sesión
-                  </div>
+                  <span className="text-sm">Cerrar Sesión</span>
                 </button>
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center space-y-3">
+              {/* Notificaciones */}
+              <NotificationCenter />
+              
+              {/* Avatar */}
+              <Link href="/perfil">
+                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center cursor-pointer hover:scale-105 transition-transform">
+                  <span className="text-white font-semibold text-sm">
+                    {session.user.nombre?.charAt(0)}{session.user.apellido?.charAt(0)}
+                  </span>
+                </div>
+              </Link>
+              
+              {/* Logout */}
+              <button
+                onClick={() => signOut({ callbackUrl: '/auth/signin' })}
+                className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors group relative"
+              >
+                <LogOut className="w-4 h-4" />
+                <div className="absolute left-full ml-2 px-3 py-2 bg-black/90 backdrop-blur-sm text-white text-sm rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 border border-white/20">
+                  Cerrar Sesión
+                </div>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </motion.aside>
   )
