@@ -4,7 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/nextauth'
+import { authOptions } from '@/lib/nextauth' // ← Corregido: era @/lib/nextauth
 import { PrismaClient } from '@prisma/client'
 
 const prisma = new PrismaClient()

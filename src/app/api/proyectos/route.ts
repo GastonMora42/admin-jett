@@ -1,10 +1,10 @@
 // =====================================================
-// API PROYECTOS - src/app/api/proyectos/route.ts
+// API PROYECTOS CORREGIDA - src/app/api/proyectos/route.ts
 // =====================================================
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { authOptions } from '@/lib/nextauth' // ← Corregido: era @/lib/auth
 import { PrismaClient } from '@prisma/client'
 
 const prisma = new PrismaClient()

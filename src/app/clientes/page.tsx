@@ -1,5 +1,5 @@
 // =====================================================
-// PÁGINA DE CLIENTES - src/app/clientes/page.tsx
+// PÁGINA DE CLIENTES CORREGIDA - src/app/clientes/page.tsx
 // =====================================================
 
 'use client'
@@ -18,7 +18,8 @@ import {
   Building,
   Users,
   Eye,
-  Star
+  Star,
+  AlertCircle
 } from 'lucide-react'
 import { FormularioCliente } from '@/components/FormularioCliente'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
@@ -44,8 +45,9 @@ interface Proyecto {
 }
 
 export default function ClientesPage() {
-  const [clientes, setClientes] = useState<Cliente[]>([])
+  const [clientes, setClientes] = useState<Cliente[]>([]) // ← Inicializado como array vacío
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null) // ← Agregado manejo de errores
   const [searchTerm, setSearchTerm] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editingCliente, setEditingCliente] = useState<Cliente | null>(null)
@@ -54,20 +56,36 @@ export default function ClientesPage() {
   const [selectedClientes, setSelectedClientes] = useState<string[]>([])
 
   useEffect(() => {
-    fetchClientes()
+    const loadData = async () => {
+      setLoading(true)
+      setError(null)
+      
+      try {
+        await fetchClientes()
+      } catch (err) {
+        setError('Error al cargar los clientes')
+        console.error('Error loading clients:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadData()
   }, [])
 
   const fetchClientes = async () => {
     try {
-      setLoading(true)
       const response = await fetch('/api/clientes')
-      if (!response.ok) throw new Error('Error al cargar clientes')
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Error al cargar clientes')
+      }
       const data = await response.json()
-      setClientes(data)
+      setClientes(Array.isArray(data) ? data : []) // ← Asegurar que siempre sea un array
     } catch (error) {
       console.error('Error:', error)
-    } finally {
-      setLoading(false)
+      setClientes([]) // ← Asegurar array vacío en caso de error
+      throw error
     }
   }
 
@@ -79,12 +97,16 @@ export default function ClientesPage() {
         body: JSON.stringify(clienteData)
       })
       
-      if (!response.ok) throw new Error('Error al crear cliente')
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Error al crear cliente')
+      }
       
       await fetchClientes()
       setShowForm(false)
     } catch (error) {
       console.error('Error:', error)
+      alert(error instanceof Error ? error.message : 'Error al crear cliente')
     }
   }
 
@@ -98,12 +120,16 @@ export default function ClientesPage() {
         body: JSON.stringify(clienteData)
       })
       
-      if (!response.ok) throw new Error('Error al actualizar cliente')
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Error al actualizar cliente')
+      }
       
       await fetchClientes()
       setEditingCliente(null)
     } catch (error) {
       console.error('Error:', error)
+      alert(error instanceof Error ? error.message : 'Error al actualizar cliente')
     }
   }
 
@@ -120,17 +146,22 @@ export default function ClientesPage() {
         method: 'DELETE'
       })
       
-      if (!response.ok) throw new Error('Error al eliminar cliente')
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Error al eliminar cliente')
+      }
       
       await fetchClientes()
       setShowDeleteConfirm(false)
       setClienteToDelete(null)
     } catch (error) {
       console.error('Error:', error)
+      alert(error instanceof Error ? error.message : 'Error al eliminar cliente')
     }
   }
 
-  const filteredClientes = clientes.filter(cliente =>
+  // ← Asegurar que clientes sea un array antes de filtrar
+  const filteredClientes = (clientes || []).filter(cliente =>
     cliente.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
     cliente.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
     cliente.empresa?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -144,6 +175,24 @@ export default function ClientesPage() {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <LoadingSpinner />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center">
+          <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-white mb-2">Error al cargar datos</h2>
+          <p className="text-gray-400 mb-4">{error}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="btn-primary"
+          >
+            Reintentar
+          </button>
+        </div>
       </div>
     )
   }
@@ -265,7 +314,7 @@ export default function ClientesPage() {
   )
 }
 
-// Componente de tarjeta de cliente
+// Componente de tarjeta de cliente (sin cambios en la lógica)
 interface ClienteCardProps {
   cliente: Cliente
   index: number

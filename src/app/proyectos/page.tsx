@@ -1,5 +1,5 @@
 // =====================================================
-// PÁGINA DE PROYECTOS - src/app/proyectos/page.tsx
+// PÁGINA DE PROYECTOS CORREGIDA - src/app/proyectos/page.tsx
 // =====================================================
 
 'use client'
@@ -28,7 +28,6 @@ import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { EmptyState } from '@/components/EmptyState'
 import { FormularioProyecto } from '@/components/FormularioProyecto'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
-
 
 interface Proyecto {
   id: string
@@ -67,9 +66,10 @@ interface Pago {
 }
 
 export default function ProyectosPage() {
-  const [proyectos, setProyectos] = useState<Proyecto[]>([])
-  const [clientes, setClientes] = useState<Cliente[]>([])
+  const [proyectos, setProyectos] = useState<Proyecto[]>([]) // ← Inicializado como array vacío
+  const [clientes, setClientes] = useState<Cliente[]>([]) // ← Inicializado como array vacío
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null) // ← Agregado manejo de errores
   const [searchTerm, setSearchTerm] = useState('')
   const [filtroEstado, setFiltroEstado] = useState<string>('todos')
   const [filtroTipo, setFiltroTipo] = useState<string>('todos')
@@ -82,32 +82,55 @@ export default function ProyectosPage() {
   const [vista, setVista] = useState<'cards' | 'table'>('cards')
 
   useEffect(() => {
-    fetchProyectos()
-    fetchClientes()
+    const loadData = async () => {
+      setLoading(true)
+      setError(null)
+      
+      try {
+        await Promise.all([
+          fetchProyectos(),
+          fetchClientes()
+        ])
+      } catch (err) {
+        setError('Error al cargar los datos')
+        console.error('Error loading data:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadData()
   }, [])
 
   const fetchProyectos = async () => {
     try {
-      setLoading(true)
       const response = await fetch('/api/proyectos')
-      if (!response.ok) throw new Error('Error al cargar proyectos')
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Error al cargar proyectos')
+      }
       const data = await response.json()
-      setProyectos(data)
+      setProyectos(Array.isArray(data) ? data : []) // ← Asegurar que siempre sea un array
     } catch (error) {
       console.error('Error:', error)
-    } finally {
-      setLoading(false)
+      setProyectos([]) // ← Asegurar array vacío en caso de error
+      throw error
     }
   }
 
   const fetchClientes = async () => {
     try {
       const response = await fetch('/api/clientes')
-      if (!response.ok) throw new Error('Error al cargar clientes')
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Error al cargar clientes')
+      }
       const data = await response.json()
-      setClientes(data)
+      setClientes(Array.isArray(data) ? data : []) // ← Asegurar que siempre sea un array
     } catch (error) {
       console.error('Error:', error)
+      setClientes([]) // ← Asegurar array vacío en caso de error
+      throw error
     }
   }
 
@@ -119,12 +142,16 @@ export default function ProyectosPage() {
         body: JSON.stringify(proyectoData)
       })
       
-      if (!response.ok) throw new Error('Error al crear proyecto')
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Error al crear proyecto')
+      }
       
       await fetchProyectos()
       setShowForm(false)
     } catch (error) {
       console.error('Error:', error)
+      alert(error instanceof Error ? error.message : 'Error al crear proyecto')
     }
   }
 
@@ -138,12 +165,16 @@ export default function ProyectosPage() {
         body: JSON.stringify(proyectoData)
       })
       
-      if (!response.ok) throw new Error('Error al actualizar proyecto')
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Error al actualizar proyecto')
+      }
       
       await fetchProyectos()
       setEditingProyecto(null)
     } catch (error) {
       console.error('Error:', error)
+      alert(error instanceof Error ? error.message : 'Error al actualizar proyecto')
     }
   }
 
@@ -160,13 +191,17 @@ export default function ProyectosPage() {
         method: 'DELETE'
       })
       
-      if (!response.ok) throw new Error('Error al eliminar proyecto')
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Error al eliminar proyecto')
+      }
       
       await fetchProyectos()
       setShowDeleteConfirm(false)
       setProyectoToDelete(null)
     } catch (error) {
       console.error('Error:', error)
+      alert(error instanceof Error ? error.message : 'Error al eliminar proyecto')
     }
   }
 
@@ -178,15 +213,20 @@ export default function ProyectosPage() {
         body: JSON.stringify({ estadoProyecto: nuevoEstado })
       })
       
-      if (!response.ok) throw new Error('Error al actualizar estado')
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Error al actualizar estado')
+      }
       
       await fetchProyectos()
     } catch (error) {
       console.error('Error:', error)
+      alert(error instanceof Error ? error.message : 'Error al actualizar estado')
     }
   }
 
-  const filteredProyectos = proyectos.filter(proyecto => {
+  // ← Asegurar que proyectos sea un array antes de filtrar
+  const filteredProyectos = (proyectos || []).filter(proyecto => {
     const matchesSearch = proyecto.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          proyecto.cliente?.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          proyecto.cliente?.empresa?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -209,6 +249,24 @@ export default function ProyectosPage() {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <LoadingSpinner />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center">
+          <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-white mb-2">Error al cargar datos</h2>
+          <p className="text-gray-400 mb-4">{error}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="btn-primary"
+          >
+            Reintentar
+          </button>
+        </div>
       </div>
     )
   }
@@ -377,7 +435,7 @@ export default function ProyectosPage() {
         </div>
       ) : (
         <ProyectosTable
-          proyectos={filteredProyectos}
+          proyectos={filteredProyectos} // ← Pasar los proyectos filtrados
           onEdit={setEditingProyecto}
           onDelete={handleDeleteProyecto}
           onView={setViewingProyecto}
@@ -405,17 +463,6 @@ export default function ProyectosPage() {
         title={editingProyecto ? 'Editar Proyecto' : 'Nuevo Proyecto'}
       />
 
-      {/* Detalle del proyecto */}
-      <ProyectosTable
-        proyecto={viewingProyecto}
-        isOpen={!!viewingProyecto}
-        onClose={() => setViewingProyecto(null)}
-        onEdit={() => {
-          setEditingProyecto(viewingProyecto)
-          setViewingProyecto(null)
-        }}
-      />
-
       {/* Confirmación de eliminación */}
       <ConfirmDialog
         isOpen={showDeleteConfirm}
@@ -431,7 +478,7 @@ export default function ProyectosPage() {
   )
 }
 
-// Componente de tarjeta de proyecto
+// Componente de tarjeta de proyecto (sin cambios en la lógica)
 interface ProyectoCardProps {
   proyecto: Proyecto
   index: number
@@ -633,15 +680,24 @@ const ProyectoCard: React.FC<ProyectoCardProps> = ({
   )
 }
 
-// Componente de tabla (simplificado)
+// Componente de tabla (corregido para manejar arrays)
 const ProyectosTable: React.FC<{
-  proyectos: Proyecto[]
+  proyectos: Proyecto[] // ← Especificar que es un array
   onEdit: (proyecto: Proyecto) => void
   onDelete: (proyecto: Proyecto) => void
   onView: (proyecto: Proyecto) => void
   selectedProyectos: string[]
   onSelectProyecto: (id: string, selected: boolean) => void
 }> = ({ proyectos, onEdit, onDelete, onView, selectedProyectos, onSelectProyecto }) => {
+  // ← Verificar que proyectos sea un array antes de hacer map
+  if (!Array.isArray(proyectos)) {
+    return (
+      <div className="card p-6 text-center">
+        <p className="text-gray-400">Error: Los datos no están en el formato correcto</p>
+      </div>
+    )
+  }
+
   return (
     <div className="card overflow-hidden">
       <div className="overflow-x-auto">
