@@ -1,5 +1,5 @@
 // =====================================================
-// PÁGINA DE CLIENTES CORREGIDA - src/app/clientes/page.tsx
+// PÁGINA DE CLIENTES ACTUALIZADA - src/app/clientes/page.tsx
 // =====================================================
 
 'use client'
@@ -25,6 +25,7 @@ import { FormularioCliente } from '@/components/FormularioCliente'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { EmptyState } from '@/components/EmptyState'
+import { useApi } from '@/lib/api-client' // ← Nuevo import
 
 interface Cliente {
   id: string
@@ -45,9 +46,7 @@ interface Proyecto {
 }
 
 export default function ClientesPage() {
-  const [clientes, setClientes] = useState<Cliente[]>([]) // ← Inicializado como array vacío
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null) // ← Agregado manejo de errores
+  const [clientes, setClientes] = useState<Cliente[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editingCliente, setEditingCliente] = useState<Cliente | null>(null)
@@ -55,53 +54,26 @@ export default function ClientesPage() {
   const [clienteToDelete, setClienteToDelete] = useState<Cliente | null>(null)
   const [selectedClientes, setSelectedClientes] = useState<string[]>([])
 
-  useEffect(() => {
-    const loadData = async () => {
-      setLoading(true)
-      setError(null)
-      
-      try {
-        await fetchClientes()
-      } catch (err) {
-        setError('Error al cargar los clientes')
-        console.error('Error loading clients:', err)
-      } finally {
-        setLoading(false)
-      }
-    }
+  // ← Usar el nuevo hook de API
+  const api = useApi()
 
-    loadData()
+  useEffect(() => {
+    fetchClientes()
   }, [])
 
   const fetchClientes = async () => {
     try {
-      const response = await fetch('/api/clientes')
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Error al cargar clientes')
-      }
-      const data = await response.json()
-      setClientes(Array.isArray(data) ? data : []) // ← Asegurar que siempre sea un array
+      const data = await api.get('/api/clientes')
+      setClientes(Array.isArray(data) ? data : [])
     } catch (error) {
       console.error('Error:', error)
-      setClientes([]) // ← Asegurar array vacío en caso de error
-      throw error
+      setClientes([])
     }
   }
 
   const handleCreateCliente = async (clienteData: Partial<Cliente>) => {
     try {
-      const response = await fetch('/api/clientes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(clienteData)
-      })
-      
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Error al crear cliente')
-      }
-      
+      await api.post('/api/clientes', clienteData)
       await fetchClientes()
       setShowForm(false)
     } catch (error) {
@@ -114,17 +86,7 @@ export default function ClientesPage() {
     if (!editingCliente) return
     
     try {
-      const response = await fetch(`/api/clientes/${editingCliente.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(clienteData)
-      })
-      
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Error al actualizar cliente')
-      }
-      
+      await api.put(`/api/clientes/${editingCliente.id}`, clienteData)
       await fetchClientes()
       setEditingCliente(null)
     } catch (error) {
@@ -142,15 +104,7 @@ export default function ClientesPage() {
     if (!clienteToDelete) return
     
     try {
-      const response = await fetch(`/api/clientes/${clienteToDelete.id}`, {
-        method: 'DELETE'
-      })
-      
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Error al eliminar cliente')
-      }
-      
+      await api.delete(`/api/clientes/${clienteToDelete.id}`)
       await fetchClientes()
       setShowDeleteConfirm(false)
       setClienteToDelete(null)
@@ -160,7 +114,6 @@ export default function ClientesPage() {
     }
   }
 
-  // ← Asegurar que clientes sea un array antes de filtrar
   const filteredClientes = (clientes || []).filter(cliente =>
     cliente.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
     cliente.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -171,7 +124,8 @@ export default function ClientesPage() {
     return cliente.proyectos?.reduce((sum, p) => sum + p.montoTotal, 0) || 0
   }
 
-  if (loading) {
+  // ← Mostrar loading del hook useApi
+  if (api.loading && clientes.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <LoadingSpinner />
@@ -179,18 +133,20 @@ export default function ClientesPage() {
     )
   }
 
-  if (error) {
+  // ← Mostrar error del hook useApi
+  if (api.error && clientes.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center">
           <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
           <h2 className="text-xl font-semibold text-white mb-2">Error al cargar datos</h2>
-          <p className="text-gray-400 mb-4">{error}</p>
+          <p className="text-gray-400 mb-4">{api.error}</p>
           <button 
-            onClick={() => window.location.reload()}
+            onClick={fetchClientes}
             className="btn-primary"
+            disabled={api.loading}
           >
-            Reintentar
+            {api.loading ? 'Cargando...' : 'Reintentar'}
           </button>
         </div>
       </div>
@@ -216,11 +172,22 @@ export default function ClientesPage() {
           whileTap={{ scale: 0.95 }}
           onClick={() => setShowForm(true)}
           className="btn-primary"
+          disabled={api.loading}
         >
           <Plus className="w-4 h-4 mr-2" />
           Nuevo Cliente
         </motion.button>
       </div>
+
+      {/* Mostrar indicador de loading si hay una operación en curso */}
+      {api.loading && clientes.length > 0 && (
+        <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
+          <div className="flex items-center space-x-2">
+            <div className="w-4 h-4 border-2 border-blue-400/20 border-t-blue-400 rounded-full animate-spin" />
+            <span className="text-blue-400 text-sm">Procesando...</span>
+          </div>
+        </div>
+      )}
 
       {/* Filtros y búsqueda */}
       <div className="card p-4">
@@ -314,7 +281,7 @@ export default function ClientesPage() {
   )
 }
 
-// Componente de tarjeta de cliente (sin cambios en la lógica)
+// Componente de tarjeta de cliente (sin cambios)
 interface ClienteCardProps {
   cliente: Cliente
   index: number

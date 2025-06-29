@@ -3,18 +3,17 @@
 // =====================================================
 
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/nextauth' // ← Corregido: era @/lib/auth
 import { PrismaClient } from '@prisma/client'
+import { requireAuth } from '@/lib/api-auth'
 
 const prisma = new PrismaClient()
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    const authResult = await requireAuth(request)
     
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+    if (authResult.error) {
+      return authResult.response
     }
 
     const clientes = await prisma.cliente.findMany({
@@ -39,10 +38,10 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    const authResult = await requireAuth(request)
     
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+    if (authResult.error) {
+      return authResult.response
     }
 
     const data = await request.json()
@@ -69,7 +68,7 @@ export async function POST(request: NextRequest) {
         telefono,
         empresa,
         estado: estado || 'ACTIVO',
-        creadoPor: session.user.id
+        creadoPor: authResult.user!.id
       }
     })
 
