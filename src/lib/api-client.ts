@@ -1,10 +1,10 @@
-// src/lib/api-client.ts - CORREGIDO COMPLETAMENTE
+// src/lib/api-client.ts - CORREGIDO para timing issues
 import { authUtils } from '@/lib/auth'
 
 let isRefreshing = false;
 let refreshPromise: Promise<boolean> | null = null;
 
-// Función helper para hacer requests autenticadas - MEJORADA
+// Función helper para hacer requests autenticadas - CORREGIDA para timing
 export async function authenticatedFetch(url: string, options: RequestInit = {}) {
   console.log(`🌐 Making authenticated request to: ${url}`);
   
@@ -26,6 +26,9 @@ export async function authenticatedFetch(url: string, options: RequestInit = {})
     throw new Error('No hay autenticación válida disponible');
   }
 
+  // NUEVO: Esperar más tiempo para asegurar sincronización de cookies
+  await new Promise(resolve => setTimeout(resolve, 500));
+
   const tokens = authUtils.getTokens();
   
   if (!tokens) {
@@ -36,16 +39,20 @@ export async function authenticatedFetch(url: string, options: RequestInit = {})
 
   const headers = new Headers(options.headers);
   
-  // IMPORTANTE: Enviar token tanto en Authorization header como en cookie header
-  // para máxima compatibilidad con el middleware
+  // CRÍTICO: Múltiples formas de enviar el token para compatibilidad máxima
   headers.set('Authorization', `Bearer ${tokens.idToken}`);
   headers.set('Content-Type', 'application/json');
-  
-  // También enviar explícitamente como header para el middleware
   headers.set('X-Auth-Token', tokens.idToken);
+  
+  // NUEVO: También establecer cookies manualmente en el header si es necesario
+  const existingCookies = headers.get('Cookie') || '';
+  const tokenCookies = `token=${tokens.idToken}; idToken=${tokens.idToken}`;
+  headers.set('Cookie', existingCookies ? `${existingCookies}; ${tokenCookies}` : tokenCookies);
 
-  console.log(`📡 Sending request with token to: ${url}`, {
-    hasToken: !!tokens.idToken,
+  console.log(`📡 Sending request with multiple token methods to: ${url}`, {
+    hasAuthHeader: !!headers.get('Authorization'),
+    hasCustomHeader: !!headers.get('X-Auth-Token'),
+    hasCookieHeader: !!headers.get('Cookie'),
     tokenLength: tokens.idToken?.length || 0,
   });
   
@@ -71,6 +78,9 @@ export async function authenticatedFetch(url: string, options: RequestInit = {})
         if (refreshed) {
           console.log('🔄 Retrying request with refreshed token...');
           
+          // IMPORTANTE: Esperar más tiempo después del refresh
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
           // Obtener los nuevos tokens
           const newTokens = authUtils.getTokens();
           if (newTokens) {
@@ -78,8 +88,9 @@ export async function authenticatedFetch(url: string, options: RequestInit = {})
             headers.set('Authorization', `Bearer ${newTokens.idToken}`);
             headers.set('X-Auth-Token', newTokens.idToken);
             
-            // Pequeña pausa para asegurar sincronización de cookies
-            await new Promise(resolve => setTimeout(resolve, 200));
+            // Actualizar cookies en header
+            const newTokenCookies = `token=${newTokens.idToken}; idToken=${newTokens.idToken}`;
+            headers.set('Cookie', newTokenCookies);
             
             // Reintentar la request
             response = await fetch(url, { 
@@ -118,7 +129,10 @@ export async function authenticatedFetch(url: string, options: RequestInit = {})
             headers.set('Authorization', `Bearer ${newTokens.idToken}`);
             headers.set('X-Auth-Token', newTokens.idToken);
             
-            await new Promise(resolve => setTimeout(resolve, 200));
+            const newTokenCookies = `token=${newTokens.idToken}; idToken=${newTokens.idToken}`;
+            headers.set('Cookie', newTokenCookies);
+            
+            await new Promise(resolve => setTimeout(resolve, 500));
             
             return fetch(url, { ...options, headers, credentials: 'include' });
           }

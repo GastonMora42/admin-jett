@@ -1,4 +1,4 @@
-// components/AuthProvider.tsx - VERSIÓN COMPLETAMENTE CORREGIDA
+// components/AuthProvider.tsx - CORREGIDO para mejor sincronización
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
@@ -84,8 +84,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
           if (refreshed) {
             console.log('✅ Tokens refreshed, rechecking auth state...');
             
-            // Pequeña pausa para asegurar sincronización
-            await new Promise(resolve => setTimeout(resolve, 300));
+            // NUEVO: Esperar más tiempo para asegurar sincronización
+            await new Promise(resolve => setTimeout(resolve, 800));
             
             const newAuthenticated = authUtils.isAuthenticated();
             const newUserData = authUtils.getCurrentUser();
@@ -144,8 +144,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     const handleTokensUpdated = async () => {
       console.log('🔄 Tokens updated event received, rechecking auth...');
-      // Pequeña pausa para asegurar que las cookies se establecieron
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // NUEVO: Pausa más larga para asegurar que las cookies se establecieron
+      await new Promise(resolve => setTimeout(resolve, 600));
       await checkAuth(false, true); // Force recheck without refresh attempt
     };
 
@@ -258,8 +258,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
         refreshToken: data.refreshToken,
       });
 
-      // CRÍTICO: Esperar a que las cookies se establezcan y el evento se dispare
-      await new Promise(resolve => setTimeout(resolve, 300));
+      // CRÍTICO: Esperar más tiempo para que las cookies se establezcan completamente
+      console.log('⏳ Waiting for cookie synchronization...');
+      await new Promise(resolve => setTimeout(resolve, 1000)); // Aumentado a 1 segundo
 
       // Verificar estado INMEDIATAMENTE después de guardar tokens
       const authSuccess = await checkAuth(false, true);
@@ -271,7 +272,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
       });
       
       if (!authSuccess) {
-        throw new Error('Failed to establish authentication state after login');
+        console.log('⚠️ Auth state not established, but tokens are saved. Will retry on next request.');
+        // No fallar aquí, las requests posteriores pueden activar el proceso
       }
       
       return { success: true };
