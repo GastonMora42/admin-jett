@@ -1,21 +1,36 @@
-// src/lib/api-client.ts - MEJORADO CON MEJOR MANEJO DE REFRESH
+// src/lib/api-client.ts - MEJORADO CON MEJOR MANEJO DE TOKENS
 import { authUtils } from '@/lib/auth'
+
+let isRefreshing = false;
+let refreshPromise: Promise<boolean> | null = null;
 
 // Función helper para hacer requests autenticadas con mejor manejo de refresh
 export async function authenticatedFetch(url: string, options: RequestInit = {}) {
   console.log(`🌐 Making authenticated request to: ${url}`);
+  
+  // Si ya hay un refresh en progreso, esperar a que termine
+  if (isRefreshing && refreshPromise) {
+    console.log('⏳ Esperando refresh en progreso...');
+    const refreshResult = await refreshPromise;
+    if (!refreshResult) {
+      throw new Error('Refresh falló, sesión expirada');
+    }
+  }
   
   // Intentar asegurar que tenemos tokens válidos antes de hacer la request
   const hasValidTokens = await authUtils.ensureValidTokens();
   
   if (!hasValidTokens) {
     console.log('❌ No valid tokens available, redirecting to login');
+    authUtils.logout();
     throw new Error('No hay autenticación válida disponible');
   }
 
   const tokens = authUtils.getTokens();
   
   if (!tokens) {
+    console.log('❌ No tokens found after validation');
+    authUtils.logout();
     throw new Error('No hay token de autenticación');
   }
 
@@ -23,7 +38,12 @@ export async function authenticatedFetch(url: string, options: RequestInit = {})
   headers.set('Authorization', `Bearer ${tokens.idToken}`);
   headers.set('Content-Type', 'application/json');
 
-  console.log(`📡 Sending request with token to: ${url}`);
+  // DEBUGGING: Log del token para verificar
+  console.log(`📡 Sending request with token to: ${url}`, {
+    hasToken: !!tokens.idToken,
+    tokenLength: tokens.idToken?.length || 0,
+    tokenStart: tokens.idToken?.substring(0, 20) + '...'
+  });
   
   const response = await fetch(url, {
     ...options,
@@ -34,27 +54,54 @@ export async function authenticatedFetch(url: string, options: RequestInit = {})
   if (response.status === 401) {
     console.log('🔄 Received 401, token might be expired, attempting refresh...');
     
-    const refreshed = await authUtils.refreshTokens();
-    
-    if (refreshed) {
-      // Reintentar con el nuevo token
-      const newTokens = authUtils.getTokens();
-      if (newTokens) {
-        console.log('🔄 Retrying request with refreshed token...');
-        headers.set('Authorization', `Bearer ${newTokens.idToken}`);
-        const retryResponse = await fetch(url, { ...options, headers });
+    // Evitar múltiples refreshes simultáneos
+    if (!isRefreshing) {
+      isRefreshing = true;
+      refreshPromise = authUtils.refreshTokens();
+      
+      try {
+        const refreshed = await refreshPromise;
         
-        if (retryResponse.status === 401) {
-          console.log('❌ Still 401 after refresh, logging out');
+        if (refreshed) {
+          // Reintentar con el nuevo token
+          const newTokens = authUtils.getTokens();
+          if (newTokens) {
+            console.log('🔄 Retrying request with refreshed token...');
+            headers.set('Authorization', `Bearer ${newTokens.idToken}`);
+            const retryResponse = await fetch(url, { ...options, headers });
+            
+            if (retryResponse.status === 401) {
+              console.log('❌ Still 401 after refresh, logging out');
+              authUtils.logout();
+              throw new Error('Sesión expirada');
+            }
+            
+            return retryResponse;
+          }
+        } else {
+          // Si no se pudo refrescar, redirigir al login
+          console.log('❌ No se pudo refrescar el token, redirigiendo al login');
           authUtils.logout();
           throw new Error('Sesión expirada');
         }
-        
-        return retryResponse;
+      } finally {
+        isRefreshing = false;
+        refreshPromise = null;
       }
     } else {
-      // Si no se pudo refrescar, redirigir al login
-      console.log('❌ No se pudo refrescar el token, redirigiendo al login');
+      // Si ya hay un refresh en progreso, esperar
+      if (refreshPromise) {
+        const refreshResult = await refreshPromise;
+        if (refreshResult) {
+          const newTokens = authUtils.getTokens();
+          if (newTokens) {
+            console.log('🔄 Using refreshed token from parallel refresh...');
+            headers.set('Authorization', `Bearer ${newTokens.idToken}`);
+            return fetch(url, { ...options, headers });
+          }
+        }
+      }
+      
       authUtils.logout();
       throw new Error('Sesión expirada');
     }

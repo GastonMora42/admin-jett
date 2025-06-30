@@ -1,4 +1,4 @@
-// lib/auth.ts - CORREGIDO CON MEJOR MANEJO DE REFRESH
+// lib/auth.ts - CORREGIDO CON MEJOR VALIDACIÓN Y DEBUG
 interface AuthTokens {
   accessToken: string;
   idToken: string;
@@ -23,6 +23,10 @@ export const authUtils = {
         localStorage.setItem('idToken', tokens.idToken);
         localStorage.setItem('refreshToken', tokens.refreshToken);
         console.log('💾 Tokens saved to localStorage');
+        
+        // También guardar en cookies como fallback para el middleware
+        document.cookie = `token=${tokens.idToken}; path=/; secure; samesite=strict`;
+        console.log('🍪 Token saved to cookie for middleware');
       } catch (error) {
         console.error('❌ Error saving tokens:', error);
       }
@@ -60,7 +64,11 @@ export const authUtils = {
         localStorage.removeItem('accessToken');
         localStorage.removeItem('idToken');
         localStorage.removeItem('refreshToken');
-        console.log('🗑️ Tokens cleared from localStorage');
+        
+        // También limpiar cookies
+        document.cookie = 'token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+        
+        console.log('🗑️ Tokens cleared from localStorage and cookies');
       } catch (error) {
         console.error('❌ Error clearing tokens:', error);
       }
@@ -91,18 +99,19 @@ export const authUtils = {
         exp: tokenData.exp, 
         current: currentTime, 
         timeUntilExpiration,
-        isValid 
+        isValid,
+        email: tokenData.email 
       });
       
-      // Si está cerca de expirar (menos de 5 minutos), considerar como expirado
-      // para forzar un refresh proactivo
+      // Si está cerca de expirar (menos de 5 minutos), considerar como necesita refresh
       if (timeUntilExpiration < 300 && timeUntilExpiration > 0) {
-        console.log('⏰ Token expires soon, will need refresh');
+        console.log('⏰ Token expires soon (< 5 min), will need refresh');
         return false; // Esto forzará un refresh
       }
       
       if (!isValid) {
         console.log('⏰ Token expired');
+        authUtils.clearTokens();
       }
       
       return isValid;
@@ -118,7 +127,7 @@ export const authUtils = {
     try {
       const base64Url = token.split('.')[1];
       if (!base64Url) {
-        console.error('❌ Invalid token format');
+        console.error('❌ Invalid token format - no payload');
         return null;
       }
 
@@ -131,7 +140,7 @@ export const authUtils = {
       );
       
       const decoded = JSON.parse(jsonPayload);
-      console.log('🔓 Token decoded successfully');
+      console.log('🔓 Token decoded successfully for:', decoded.email);
       return decoded;
     } catch (error) {
       console.error('❌ Error decoding token:', error);
@@ -240,18 +249,49 @@ export const authUtils = {
     }
   },
 
-  // Nueva función: verificar y refrescar tokens si es necesario
+  // Nueva función: verificar y refrescar tokens si es necesario - MEJORADA
   ensureValidTokens: async (): Promise<boolean> => {
     console.log('🔍 Checking token validity...');
     
-    // Si ya está autenticado, todo bien
-    if (authUtils.isAuthenticated()) {
-      console.log('✅ Tokens are valid');
-      return true;
+    const tokens = authUtils.getTokens();
+    if (!tokens) {
+      console.log('❌ No tokens available');
+      return false;
     }
 
-    // Si no está autenticado, intentar refresh
-    console.log('🔄 Tokens expired or invalid, attempting refresh...');
-    return await authUtils.refreshTokens();
+    // Verificar si los tokens son válidos
+    const tokenData = authUtils.decodeToken(tokens.idToken);
+    if (!tokenData) {
+      console.log('❌ Invalid token format');
+      authUtils.clearTokens();
+      return false;
+    }
+
+    const currentTime = Math.floor(Date.now() / 1000);
+    const timeUntilExpiration = tokenData.exp - currentTime;
+
+    // Si el token ya expiró
+    if (timeUntilExpiration <= 0) {
+      console.log('⏰ Token expired, attempting refresh...');
+      return await authUtils.refreshTokens();
+    }
+
+    // Si el token expira en menos de 5 minutos, refrescar preventivamente
+    if (timeUntilExpiration < 300) {
+      console.log('⏰ Token expires soon, preemptive refresh...');
+      const refreshResult = await authUtils.refreshTokens();
+      
+      // Si el refresh falla, pero el token aún es válido, continuar
+      if (!refreshResult && timeUntilExpiration > 0) {
+        console.log('⚠️ Refresh failed but token still valid, continuing...');
+        return true;
+      }
+      
+      return refreshResult;
+    }
+
+    // Token válido
+    console.log('✅ Tokens are valid');
+    return true;
   }
 };
