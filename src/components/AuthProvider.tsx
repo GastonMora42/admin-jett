@@ -1,4 +1,4 @@
-// components/AuthProvider.tsx
+// components/AuthProvider.tsx - CORREGIDO
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
@@ -22,7 +22,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   refreshAuth: () => Promise<boolean>;
-  forceRefresh: () => Promise<void>; // Nueva función
+  forceRefresh: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -40,6 +40,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const router = useRouter();
   const pathname = usePathname();
   const isRedirecting = useRef(false);
+  const refreshingTokens = useRef(false);
 
   // Rutas que requieren autenticación
   const protectedRoutes = ['/dashboard', '/profile', '/admin', '/projects', '/clients', '/clientes', '/proyectos', '/pagos', '/facturacion', '/analytics', '/configuracion'];
@@ -50,12 +51,39 @@ export function AuthProvider({ children }: AuthProviderProps) {
   // Rutas completamente públicas
   const publicRoutes = ['/', '/auth/error', '/auth/suspended', '/auth/unauthorized', '/auth/confirm'];
 
-  const checkAuth = async () => {
+  const checkAuth = async (attemptRefresh = true) => {
     try {
       const authenticated = authUtils.isAuthenticated();
       const userData = authUtils.getCurrentUser();
       
       console.log('🔍 Checking auth:', { authenticated, userData: !!userData, pathname });
+      
+      // Si no está autenticado pero tenemos tokens, intentar refresh
+      if (!authenticated && attemptRefresh && !refreshingTokens.current) {
+        const tokens = authUtils.getTokens();
+        if (tokens?.refreshToken) {
+          console.log('🔄 Token expired, attempting refresh...');
+          refreshingTokens.current = true;
+          
+          try {
+            const refreshed = await authUtils.refreshTokens();
+            if (refreshed) {
+              console.log('✅ Tokens refreshed, rechecking auth...');
+              const newAuthenticated = authUtils.isAuthenticated();
+              const newUserData = authUtils.getCurrentUser();
+              
+              setIsAuthenticated(newAuthenticated);
+              setUser(newUserData);
+              refreshingTokens.current = false;
+              return { authenticated: newAuthenticated, userData: newUserData };
+            }
+          } catch (error) {
+            console.error('❌ Error during refresh:', error);
+          } finally {
+            refreshingTokens.current = false;
+          }
+        }
+      }
       
       setIsAuthenticated(authenticated);
       setUser(userData);
@@ -84,15 +112,42 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     initAuth();
 
-    // Verificar autenticación cada 5 minutos (no cada minuto para evitar spam)
-    const interval = setInterval(checkAuth, 5 * 60 * 1000);
+    // Verificar autenticación cada 5 minutos
+    const interval = setInterval(() => checkAuth(true), 5 * 60 * 1000);
     
     return () => clearInterval(interval);
   }, []);
 
+  // Verificar tokens antes de que expiren
+  useEffect(() => {
+    const checkTokenExpiration = () => {
+      const tokens = authUtils.getTokens();
+      if (!tokens) return;
+
+      const tokenData = authUtils.decodeToken(tokens.idToken);
+      if (!tokenData) return;
+
+      const currentTime = Math.floor(Date.now() / 1000);
+      const timeUntilExpiration = tokenData.exp - currentTime;
+
+      // Si el token expira en menos de 5 minutos, refrescar
+      if (timeUntilExpiration > 0 && timeUntilExpiration < 300 && !refreshingTokens.current) {
+        console.log('⏰ Token expires soon, preemptive refresh...');
+        refreshingTokens.current = true;
+        authUtils.refreshTokens().finally(() => {
+          refreshingTokens.current = false;
+        });
+      }
+    };
+
+    // Verificar cada minuto
+    const interval = setInterval(checkTokenExpiration, 60 * 1000);
+    return () => clearInterval(interval);
+  }, [isAuthenticated]);
+
   // Manejar redirecciones solo después de la inicialización
   useEffect(() => {
-    if (!hasInitialized || isLoading || isRedirecting.current) {
+    if (!hasInitialized || isLoading || isRedirecting.current || refreshingTokens.current) {
       return;
     }
 
@@ -115,16 +170,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         isRedirecting.current = true;
         router.push('/auth/signin?callbackUrl=' + encodeURIComponent(pathname));
         setTimeout(() => { isRedirecting.current = false; }, 2000);
-      } 
-      // NO redirigir automáticamente desde rutas públicas cuando está autenticado
-      // Dejar que cada página maneje su propia lógica de redirección
-      // else if (isPublicOnlyRoute && isAuthenticated) {
-      //   console.log('📊 Redirecting to dashboard: public-only route with auth');
-      //   isRedirecting.current = true;
-      //   router.push('/dashboard');
-      //   setTimeout(() => { isRedirecting.current = false; }, 2000);
-      // }
-      // Para rutas públicas, no hacer nada
+      }
     };
 
     // Delay para evitar redirecciones inmediatas
@@ -156,7 +202,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       });
 
       // Actualizar estado inmediatamente
-      const { authenticated, userData } = await checkAuth();
+      const { authenticated, userData } = await checkAuth(false); // No intentar refresh en login
       
       if (authenticated && userData) {
         console.log('✅ Login successful, updating state immediately');
@@ -182,9 +228,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
   };
 
   const refreshAuth = async () => {
+    if (refreshingTokens.current) {
+      console.log('⏳ Refresh already in progress...');
+      return false;
+    }
+
     const success = await authUtils.refreshTokens();
     if (success) {
-      const { authenticated, userData } = await checkAuth();
+      const { authenticated, userData } = await checkAuth(false);
       return authenticated;
     } else {
       setUser(null);
@@ -195,7 +246,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const forceRefresh = async () => {
     console.log('🔄 Force refreshing auth state...');
-    const { authenticated, userData } = await checkAuth();
+    const { authenticated, userData } = await checkAuth(false);
     console.log('🔄 Force refresh result:', { authenticated, userData: !!userData });
   };
 

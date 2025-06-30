@@ -1,5 +1,5 @@
 // =====================================================
-// MIDDLEWARE CORREGIDO PARA COGNITO - middleware.ts
+// MIDDLEWARE CORREGIDO CON DEBUG - middleware.ts
 // =====================================================
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -71,26 +71,34 @@ export function middleware(request: NextRequest) {
   const authHeader = request.headers.get('authorization')
   if (authHeader && authHeader.startsWith('Bearer ')) {
     token = authHeader.substring(7)
+    console.log('🔑 Token encontrado en Authorization header')
   }
   
-  // Si no está en header, intentar obtener de cookie (para navegador)
+  // Si no está en header, intentar obtener de cookie (fallback)
   if (!token) {
-    // En el navegador, los tokens se almacenan en localStorage, no en cookies
-    // por lo que necesitamos otra estrategia para las rutas de servidor
-    console.log('🔍 No se encontró token en headers')
+    const tokenCookie = request.cookies.get('token')?.value
+    if (tokenCookie) {
+      token = tokenCookie
+      console.log('🔑 Token encontrado en cookie')
+    }
   }
 
   // Para rutas de API, verificar autenticación más estrictamente
   if (pathname.startsWith('/api/')) {
     if (!token) {
-      console.log('❌ API: No token provided')
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+      console.log('❌ API: No token provided for', pathname)
+      return NextResponse.json({ error: 'No autorizado - Token requerido' }, { status: 401 })
     }
 
     const decodedToken = decodeToken(token)
-    if (!decodedToken || !isTokenValid(decodedToken)) {
-      console.log('❌ API: Invalid or expired token')
-      return NextResponse.json({ error: 'Token inválido o expirado' }, { status: 401 })
+    if (!decodedToken) {
+      console.log('❌ API: Invalid token format for', pathname)
+      return NextResponse.json({ error: 'Token inválido' }, { status: 401 })
+    }
+
+    if (!isTokenValid(decodedToken)) {
+      console.log('❌ API: Expired token for', pathname)
+      return NextResponse.json({ error: 'Token expirado' }, { status: 401 })
     }
 
     // Verificar permisos específicos para APIs administrativas
@@ -98,8 +106,8 @@ export function middleware(request: NextRequest) {
     
     if (pathname.startsWith('/api/usuarios')) {
       if (!['SUPERADMIN', 'ADMIN'].includes(userRole)) {
-        console.log('❌ API: Sin permisos para gestión de usuarios')
-        return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+        console.log('❌ API: Insufficient permissions for user management:', userRole)
+        return NextResponse.json({ error: 'Sin permisos para gestión de usuarios' }, { status: 403 })
       }
     }
 
@@ -108,8 +116,9 @@ export function middleware(request: NextRequest) {
     requestHeaders.set('x-user-id', decodedToken.sub)
     requestHeaders.set('x-user-email', decodedToken.email)
     requestHeaders.set('x-user-role', userRole)
+    requestHeaders.set('x-user-name', `${decodedToken.given_name} ${decodedToken.family_name}`)
 
-    console.log('✅ API: Token válido para:', decodedToken.email)
+    console.log('✅ API: Token válido para:', decodedToken.email, 'Role:', userRole)
     return NextResponse.next({
       request: {
         headers: requestHeaders,
@@ -117,8 +126,8 @@ export function middleware(request: NextRequest) {
     })
   }
 
-  // Para rutas de páginas, permitir pasar y que el AuthProvider maneje la redirección
-  console.log('➡️ Página: Permitiendo que AuthProvider maneje la autenticación')
+  // Para rutas de páginas, permitir pasar (el AuthProvider maneja la autenticación del lado del cliente)
+  console.log('➡️ Página: Permitiendo acceso, AuthProvider manejará autenticación')
   return NextResponse.next()
 }
 

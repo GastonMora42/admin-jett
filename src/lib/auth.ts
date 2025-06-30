@@ -1,4 +1,4 @@
-// lib/auth.ts
+// lib/auth.ts - CORREGIDO
 interface AuthTokens {
   accessToken: string;
   idToken: string;
@@ -94,8 +94,8 @@ export const authUtils = {
       });
       
       if (!isValid) {
-        console.log('⏰ Token expired, clearing tokens');
-        authUtils.clearTokens();
+        console.log('⏰ Token expired, will try to refresh');
+        // No limpiar tokens aquí, dejar que refresh maneje la limpieza si falla
       }
       
       return isValid;
@@ -161,7 +161,7 @@ export const authUtils = {
     return user;
   },
 
-  // Refrescar tokens automáticamente
+  // Refrescar tokens automáticamente - CORREGIDO
   refreshTokens: async (): Promise<boolean> => {
     const tokens = authUtils.getTokens();
     if (!tokens?.refreshToken) {
@@ -174,7 +174,10 @@ export const authUtils = {
       const response = await fetch('/api/auth/refresh', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken: tokens.refreshToken }),
+        body: JSON.stringify({ 
+          refreshToken: tokens.refreshToken,
+          idToken: tokens.idToken // ← Enviar idToken para obtener email
+        }),
       });
 
       if (response.ok) {
@@ -183,7 +186,8 @@ export const authUtils = {
         console.log('✅ Tokens refreshed successfully');
         return true;
       } else {
-        console.log('❌ Token refresh failed:', response.status);
+        const errorData = await response.json();
+        console.log('❌ Token refresh failed:', response.status, errorData.error);
       }
     } catch (error) {
       console.error('❌ Error refreshing tokens:', error);

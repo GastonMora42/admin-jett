@@ -1,6 +1,5 @@
-
 // =====================================================
-// FORMULARIO PROYECTO - src/components/FormularioProyecto.tsx
+// FORMULARIO PROYECTO CORREGIDO - src/components/FormularioProyecto.tsx
 // =====================================================
 
 'use client'
@@ -8,29 +7,20 @@
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, FolderOpen, User, DollarSign, Calendar } from 'lucide-react'
-
-interface Proyecto {
-  id?: string
-  nombre: string
-  tipo: string
-  montoTotal: number
-  formaPago: string
-  cuotas?: number
-  fechaInicio: string
-  fechaEntrega?: string
-  clienteId: string
-}
-
-interface Cliente {
-  id: string
-  nombre: string
-  empresa?: string
-}
+import { 
+  Proyecto, 
+  Cliente, 
+  CreateProyectoData,
+  TipoProyecto, 
+  FormaPago,
+  TIPOS_PROYECTO_LABELS,
+  FORMAS_PAGO_LABELS
+} from '@/types/index'
 
 interface FormularioProyectoProps {
   isOpen: boolean
   onClose: () => void
-  onSubmit: (data: Partial<Proyecto>) => void
+  onSubmit: (data: CreateProyectoData) => Promise<void>
   proyecto?: Proyecto | null
   clientes: Cliente[]
   title?: string
@@ -44,7 +34,7 @@ export const FormularioProyecto: React.FC<FormularioProyectoProps> = ({
   clientes,
   title = 'Nuevo Proyecto'
 }) => {
-  const [formData, setFormData] = useState<Proyecto>({
+  const [formData, setFormData] = useState<CreateProyectoData>({
     nombre: '',
     tipo: 'SOFTWARE_A_MEDIDA',
     montoTotal: 0,
@@ -57,21 +47,13 @@ export const FormularioProyecto: React.FC<FormularioProyectoProps> = ({
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
 
-  const tiposProyecto = [
-    { value: 'SOFTWARE_A_MEDIDA', label: 'Software a Medida' },
-    { value: 'ECOMMERCE', label: 'E-commerce' },
-    { value: 'LANDING_PAGE', label: 'Landing Page' },
-    { value: 'SISTEMA_WEB', label: 'Sistema Web' },
-    { value: 'APP_MOVIL', label: 'App Móvil' },
-    { value: 'MANTENIMIENTO', label: 'Mantenimiento' }
-  ]
+  const tiposProyecto: { value: TipoProyecto; label: string }[] = Object.entries(TIPOS_PROYECTO_LABELS).map(
+    ([value, label]) => ({ value: value as TipoProyecto, label })
+  )
 
-  const formasPago = [
-    { value: 'PAGO_UNICO', label: 'Pago Único' },
-    { value: 'DOS_CUOTAS', label: '2 Cuotas' },
-    { value: 'TRES_CUOTAS', label: '3 Cuotas' },
-    { value: 'MENSUAL', label: 'Mensual' }
-  ]
+  const formasPago: { value: FormaPago; label: string }[] = Object.entries(FORMAS_PAGO_LABELS).map(
+    ([value, label]) => ({ value: value as FormaPago, label })
+  )
 
   useEffect(() => {
     if (proyecto) {
@@ -137,10 +119,12 @@ export const FormularioProyecto: React.FC<FormularioProyectoProps> = ({
       else if (formData.formaPago === 'TRES_CUOTAS') cuotasFinales = 3
       else if (formData.formaPago === 'PAGO_UNICO') cuotasFinales = 1
 
-      await onSubmit({
+      const submitData: CreateProyectoData = {
         ...formData,
         cuotas: cuotasFinales
-      })
+      }
+
+      await onSubmit(submitData)
       onClose()
     } catch (error) {
       console.error('Error al guardar proyecto:', error)
@@ -226,7 +210,7 @@ export const FormularioProyecto: React.FC<FormularioProyectoProps> = ({
                 </label>
                 <select
                   value={formData.tipo}
-                  onChange={(e) => setFormData({...formData, tipo: e.target.value})}
+                  onChange={(e) => setFormData({...formData, tipo: e.target.value as TipoProyecto})}
                   className="input-glass w-full"
                 >
                   {tiposProyecto.map((tipo) => (
@@ -263,7 +247,7 @@ export const FormularioProyecto: React.FC<FormularioProyectoProps> = ({
                 </label>
                 <select
                   value={formData.formaPago}
-                  onChange={(e) => setFormData({...formData, formaPago: e.target.value})}
+                  onChange={(e) => setFormData({...formData, formaPago: e.target.value as FormaPago})}
                   className="input-glass w-full"
                 >
                   {formasPago.map((forma) => (
@@ -381,5 +365,3 @@ export const FormularioProyecto: React.FC<FormularioProyectoProps> = ({
     </AnimatePresence>
   )
 }
-
-

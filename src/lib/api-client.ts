@@ -1,5 +1,5 @@
 // =====================================================
-// API CLIENT UTILS - src/lib/api-client.ts
+// API CLIENT UTILS CORREGIDO - src/lib/api-client.ts
 // =====================================================
 
 import { authUtils } from '@/lib/auth'
@@ -31,6 +31,7 @@ export async function authenticatedFetch(url: string, options: RequestInit = {})
       const newTokens = authUtils.getTokens()
       if (newTokens) {
         headers.set('Authorization', `Bearer ${newTokens.idToken}`)
+        console.log('🔄 Reintentando request con token renovado...')
         return fetch(url, { ...options, headers })
       }
     } else {
@@ -89,12 +90,27 @@ export function useApi() {
       const response = await authenticatedFetch(url, options)
       
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Error desconocido' }))
+        const contentType = response.headers.get('content-type')
+        let errorData
+        
+        if (contentType && contentType.includes('application/json')) {
+          errorData = await response.json()
+        } else {
+          errorData = { error: `HTTP ${response.status}: ${response.statusText}` }
+        }
+        
         throw new Error(errorData.error || `HTTP ${response.status}`)
       }
 
-      const data = await response.json()
-      return data
+      // Verificar si la respuesta tiene contenido JSON
+      const contentType = response.headers.get('content-type')
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json()
+        return data
+      } else {
+        // Si no es JSON, devolver texto
+        return await response.text()
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Error desconocido'
       setError(errorMessage)
@@ -126,6 +142,10 @@ export function useApi() {
     return request(url, { method: 'DELETE' }, showLoading)
   }, [request])
 
+  const clearError = useCallback(() => {
+    setError(null)
+  }, [])
+
   return {
     loading,
     error,
@@ -133,6 +153,7 @@ export function useApi() {
     post,
     put,
     delete: del,
-    request
+    request,
+    clearError
   }
 }
