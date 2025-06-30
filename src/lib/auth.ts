@@ -1,4 +1,4 @@
-// lib/auth.ts - CORREGIDO CON MEJOR VALIDACIÓN Y DEBUG
+// lib/auth.ts - CORREGIDO COMPLETAMENTE
 interface AuthTokens {
   accessToken: string;
   idToken: string;
@@ -15,18 +15,30 @@ interface User {
 }
 
 export const authUtils = {
-  // Guardar tokens
+  // Guardar tokens - CORREGIDO para mejor sincronización con middleware
   setTokens: (tokens: AuthTokens) => {
     if (typeof window !== 'undefined') {
       try {
+        // Guardar en localStorage
         localStorage.setItem('accessToken', tokens.accessToken);
         localStorage.setItem('idToken', tokens.idToken);
         localStorage.setItem('refreshToken', tokens.refreshToken);
         console.log('💾 Tokens saved to localStorage');
         
-        // También guardar en cookies como fallback para el middleware
-        document.cookie = `token=${tokens.idToken}; path=/; secure; samesite=strict`;
-        console.log('🍪 Token saved to cookie for middleware');
+        // CRÍTICO: Guardar en AMBAS cookies que busca el middleware
+        // Usar configuración que funcione tanto en HTTP (dev) como HTTPS (prod)
+        const cookieOptions = process.env.NODE_ENV === 'production' 
+          ? '; path=/; secure; samesite=strict'
+          : '; path=/; samesite=strict';
+        
+        document.cookie = `token=${tokens.idToken}${cookieOptions}`;
+        document.cookie = `idToken=${tokens.idToken}${cookieOptions}`;
+        console.log('🍪 Tokens saved to cookies for middleware');
+
+        // Disparar evento para notificar que los tokens fueron actualizados
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('auth-tokens-updated'));
+        }
       } catch (error) {
         console.error('❌ Error saving tokens:', error);
       }
@@ -57,25 +69,30 @@ export const authUtils = {
     return null;
   },
 
-  // Limpiar tokens (logout)
+  // Limpiar tokens - MEJORADO
   clearTokens: () => {
     if (typeof window !== 'undefined') {
       try {
+        // Limpiar localStorage
         localStorage.removeItem('accessToken');
         localStorage.removeItem('idToken');
         localStorage.removeItem('refreshToken');
         
-        // También limpiar cookies
+        // Limpiar AMBAS cookies
         document.cookie = 'token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+        document.cookie = 'idToken=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;';
         
         console.log('🗑️ Tokens cleared from localStorage and cookies');
+
+        // Disparar evento para notificar que los tokens fueron eliminados
+        window.dispatchEvent(new CustomEvent('auth-tokens-cleared'));
       } catch (error) {
         console.error('❌ Error clearing tokens:', error);
       }
     }
   },
 
-  // Verificar si está autenticado
+  // Verificar si está autenticado - MEJORADO
   isAuthenticated: (): boolean => {
     const tokens = authUtils.getTokens();
     if (!tokens) {
@@ -93,7 +110,7 @@ export const authUtils = {
 
       const currentTime = Math.floor(Date.now() / 1000);
       const timeUntilExpiration = tokenData.exp - currentTime;
-      const isValid = timeUntilExpiration > 0;
+      const isValid = timeUntilExpiration > 60; // Buffer de 1 minuto
       
       console.log('🔍 Token validation:', { 
         exp: tokenData.exp, 
@@ -103,14 +120,8 @@ export const authUtils = {
         email: tokenData.email 
       });
       
-      // Si está cerca de expirar (menos de 5 minutos), considerar como necesita refresh
-      if (timeUntilExpiration < 300 && timeUntilExpiration > 0) {
-        console.log('⏰ Token expires soon (< 5 min), will need refresh');
-        return false; // Esto forzará un refresh
-      }
-      
       if (!isValid) {
-        console.log('⏰ Token expired');
+        console.log('⏰ Token expired or expiring soon');
         authUtils.clearTokens();
       }
       
@@ -122,7 +133,7 @@ export const authUtils = {
     }
   },
 
-  // Decodificar JWT para obtener información del usuario
+  // Decodificar JWT
   decodeToken: (token: string) => {
     try {
       const base64Url = token.split('.')[1];
@@ -148,7 +159,7 @@ export const authUtils = {
     }
   },
 
-  // Obtener información del usuario actual
+  // Obtener usuario actual
   getCurrentUser: (): User | null => {
     const tokens = authUtils.getTokens();
     if (!tokens) {
@@ -176,7 +187,7 @@ export const authUtils = {
     return user;
   },
 
-  // Refrescar tokens automáticamente - MEJORADO
+  // Refrescar tokens - CORREGIDO para mejor sincronización
   refreshTokens: async (): Promise<boolean> => {
     const tokens = authUtils.getTokens();
     if (!tokens?.refreshToken) {
@@ -187,10 +198,9 @@ export const authUtils = {
     try {
       console.log('🔄 Attempting token refresh...');
       
-      // Preparar la solicitud con mejor manejo de errores
       const requestBody = { 
         refreshToken: tokens.refreshToken,
-        idToken: tokens.idToken // Enviar idToken para obtener username
+        idToken: tokens.idToken
       };
 
       console.log('📡 Sending refresh request...');
@@ -206,14 +216,18 @@ export const authUtils = {
         const newTokens = await response.json();
         console.log('✅ New tokens received, saving...');
         
+        // CRÍTICO: Actualizar tokens INMEDIATAMENTE
         authUtils.setTokens(newTokens);
-        console.log('✅ Tokens refreshed successfully');
+        
+        // Pequeña pausa para asegurar que las cookies se establezcan
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        console.log('✅ Tokens refreshed and synchronized successfully');
         return true;
       } else {
         const errorData = await response.json();
         console.log('❌ Token refresh failed:', response.status, errorData.error);
         
-        // Si el error es por token expirado o inválido, limpiar tokens
         if (response.status === 400 || response.status === 401) {
           console.log('🗑️ Clearing invalid tokens');
           authUtils.clearTokens();
@@ -249,9 +263,9 @@ export const authUtils = {
     }
   },
 
-  // Nueva función: verificar y refrescar tokens si es necesario - MEJORADA
+  // Verificar y refrescar tokens - MEJORADO
   ensureValidTokens: async (): Promise<boolean> => {
-    console.log('🔍 Checking token validity...');
+    console.log('🔍 Ensuring valid tokens...');
     
     const tokens = authUtils.getTokens();
     if (!tokens) {
@@ -276,8 +290,8 @@ export const authUtils = {
       return await authUtils.refreshTokens();
     }
 
-    // Si el token expira en menos de 5 minutos, refrescar preventivamente
-    if (timeUntilExpiration < 300) {
+    // Si el token expira en menos de 2 minutos, refrescar preventivamente
+    if (timeUntilExpiration < 120) {
       console.log('⏰ Token expires soon, preemptive refresh...');
       const refreshResult = await authUtils.refreshTokens();
       

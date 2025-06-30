@@ -1,4 +1,4 @@
-// components/AuthProvider.tsx - CON MEJOR SINCRONIZACIÓN
+// components/AuthProvider.tsx - VERSIÓN COMPLETAMENTE CORREGIDA
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
@@ -38,15 +38,24 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const router = useRouter();
   const pathname = usePathname();
   const refreshingRef = useRef(false);
+  const lastTokenCheck = useRef<number>(0);
 
   // Rutas públicas
   const publicRoutes = ['/', '/auth/signin', '/auth/register', '/auth/error', '/auth/confirm'];
   const protectedRoutes = ['/dashboard', '/clientes', '/proyectos', '/pagos', '/facturacion', '/analytics', '/configuracion'];
 
   // Función para verificar autenticación con mejor sincronización
-  const checkAuth = async (attemptRefresh = true) => {
+  const checkAuth = async (attemptRefresh = true, force = false) => {
     try {
-      console.log('🔍 Checking authentication state...');
+      // Evitar checks muy frecuentes a menos que sea forzado
+      const now = Date.now();
+      if (!force && (now - lastTokenCheck.current) < 5000) { // 5 segundos
+        console.log('🔍 Auth check skipped - too frequent');
+        return isAuthenticated;
+      }
+      lastTokenCheck.current = now;
+
+      console.log('🔍 Checking authentication state...', { attemptRefresh, force });
       
       const tokens = authUtils.getTokens();
       if (!tokens) {
@@ -74,6 +83,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
           const refreshed = await authUtils.refreshTokens();
           if (refreshed) {
             console.log('✅ Tokens refreshed, rechecking auth state...');
+            
+            // Pequeña pausa para asegurar sincronización
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
             const newAuthenticated = authUtils.isAuthenticated();
             const newUserData = authUtils.getCurrentUser();
             
@@ -115,7 +128,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       console.log('🚀 Initializing authentication...');
       setIsLoading(true);
       
-      await checkAuth();
+      await checkAuth(true, true); // Force check during initialization
       
       setIsLoading(false);
       setHasInitialized(true);
@@ -125,31 +138,40 @@ export function AuthProvider({ children }: AuthProviderProps) {
     initAuth();
   }, []);
 
-  // Listener para cambios en tokens (para sincronización)
+  // Listener para cambios en tokens (para sincronización) - MEJORADO
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const handleTokensUpdated = () => {
-      console.log('🔄 Tokens updated, rechecking auth...');
-      checkAuth(false);
+    const handleTokensUpdated = async () => {
+      console.log('🔄 Tokens updated event received, rechecking auth...');
+      // Pequeña pausa para asegurar que las cookies se establecieron
+      await new Promise(resolve => setTimeout(resolve, 100));
+      await checkAuth(false, true); // Force recheck without refresh attempt
     };
 
     const handleTokensCleared = () => {
-      console.log('🗑️ Tokens cleared, updating state...');
+      console.log('🗑️ Tokens cleared event received, updating state...');
       setIsAuthenticated(false);
       setUser(null);
     };
 
+    const handleBeforeUnload = () => {
+      // Limpiar refs al cerrar la ventana
+      refreshingRef.current = false;
+    };
+
     window.addEventListener('auth-tokens-updated', handleTokensUpdated);
     window.addEventListener('auth-tokens-cleared', handleTokensCleared);
+    window.addEventListener('beforeunload', handleBeforeUnload);
 
     return () => {
       window.removeEventListener('auth-tokens-updated', handleTokensUpdated);
       window.removeEventListener('auth-tokens-cleared', handleTokensCleared);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
     };
   }, []);
 
-  // Manejo de redirecciones
+  // Manejo de redirecciones - MEJORADO
   useEffect(() => {
     if (!hasInitialized || isLoading || refreshingRef.current) {
       return;
@@ -175,17 +197,21 @@ export function AuthProvider({ children }: AuthProviderProps) {
     // Redirigir a dashboard si está autenticado en login
     if (isAuthenticated && pathname === '/auth/signin') {
       console.log('✅ Authenticated user on login page, redirecting to dashboard');
-      router.push('/dashboard');
+      const urlParams = new URLSearchParams(window.location.search);
+      const callbackUrl = urlParams.get('callbackUrl') || '/dashboard';
+      router.push(callbackUrl);
       return;
     }
 
   }, [pathname, isAuthenticated, hasInitialized, isLoading, router]);
 
-  // Monitor de salud de tokens cada 2 minutos
+  // Monitor de salud de tokens - MEJORADO
   useEffect(() => {
     if (!hasInitialized) return;
 
     const monitorTokenHealth = async () => {
+      if (refreshingRef.current) return; // Skip if already refreshing
+      
       const tokens = authUtils.getTokens();
       if (!tokens) return;
 
@@ -195,14 +221,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const currentTime = Math.floor(Date.now() / 1000);
       const timeUntilExpiration = tokenData.exp - currentTime;
 
-      // Refresh preventivo si expira en menos de 10 minutos
-      if (timeUntilExpiration > 0 && timeUntilExpiration < 600 && !refreshingRef.current) {
+      // Refresh preventivo si expira en menos de 5 minutos
+      if (timeUntilExpiration > 0 && timeUntilExpiration < 300 && !refreshingRef.current) {
         console.log('⏰ Token expires soon, preventive refresh...');
-        await checkAuth(true);
+        await checkAuth(true, true);
       }
     };
 
-    const interval = setInterval(monitorTokenHealth, 2 * 60 * 1000); // Cada 2 minutos
+    const interval = setInterval(monitorTokenHealth, 60000); // Cada minuto
     return () => clearInterval(interval);
   }, [hasInitialized]);
 
@@ -232,11 +258,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
         refreshToken: data.refreshToken,
       });
 
-      // CRÍTICO: Esperar un poco para que las cookies se establezcan
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // CRÍTICO: Esperar a que las cookies se establezcan y el evento se dispare
+      await new Promise(resolve => setTimeout(resolve, 300));
 
       // Verificar estado INMEDIATAMENTE después de guardar tokens
-      const authSuccess = await checkAuth(false);
+      const authSuccess = await checkAuth(false, true);
       
       console.log('✅ Login complete:', { 
         tokensSet: true, 
@@ -273,7 +299,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       return false;
     }
 
-    return await checkAuth(true);
+    return await checkAuth(true, true);
   };
 
   const value: AuthContextType = {

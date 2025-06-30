@@ -1,10 +1,10 @@
-// src/lib/api-client.ts - MEJORADO CON MEJOR MANEJO DE TOKENS
+// src/lib/api-client.ts - CORREGIDO COMPLETAMENTE
 import { authUtils } from '@/lib/auth'
 
 let isRefreshing = false;
 let refreshPromise: Promise<boolean> | null = null;
 
-// Función helper para hacer requests autenticadas con mejor manejo de refresh
+// Función helper para hacer requests autenticadas - MEJORADA
 export async function authenticatedFetch(url: string, options: RequestInit = {}) {
   console.log(`🌐 Making authenticated request to: ${url}`);
   
@@ -17,11 +17,11 @@ export async function authenticatedFetch(url: string, options: RequestInit = {})
     }
   }
   
-  // Intentar asegurar que tenemos tokens válidos antes de hacer la request
+  // CRÍTICO: Asegurar que tenemos tokens válidos ANTES de hacer la request
   const hasValidTokens = await authUtils.ensureValidTokens();
   
   if (!hasValidTokens) {
-    console.log('❌ No valid tokens available, redirecting to login');
+    console.log('❌ No valid tokens available after validation');
     authUtils.logout();
     throw new Error('No hay autenticación válida disponible');
   }
@@ -35,24 +35,30 @@ export async function authenticatedFetch(url: string, options: RequestInit = {})
   }
 
   const headers = new Headers(options.headers);
+  
+  // IMPORTANTE: Enviar token tanto en Authorization header como en cookie header
+  // para máxima compatibilidad con el middleware
   headers.set('Authorization', `Bearer ${tokens.idToken}`);
   headers.set('Content-Type', 'application/json');
+  
+  // También enviar explícitamente como header para el middleware
+  headers.set('X-Auth-Token', tokens.idToken);
 
-  // DEBUGGING: Log del token para verificar
   console.log(`📡 Sending request with token to: ${url}`, {
     hasToken: !!tokens.idToken,
     tokenLength: tokens.idToken?.length || 0,
-    tokenStart: tokens.idToken?.substring(0, 20) + '...'
   });
   
-  const response = await fetch(url, {
+  // Primera tentativa
+  let response = await fetch(url, {
     ...options,
-    headers
+    headers,
+    credentials: 'include' // IMPORTANTE: incluir cookies
   });
 
-  // Si el token expiró, intentar refrescar UNA vez más
+  // Si obtenemos 401, intentar refresh UNA sola vez
   if (response.status === 401) {
-    console.log('🔄 Received 401, token might be expired, attempting refresh...');
+    console.log('🔄 Received 401, attempting token refresh...');
     
     // Evitar múltiples refreshes simultáneos
     if (!isRefreshing) {
@@ -63,24 +69,37 @@ export async function authenticatedFetch(url: string, options: RequestInit = {})
         const refreshed = await refreshPromise;
         
         if (refreshed) {
-          // Reintentar con el nuevo token
+          console.log('🔄 Retrying request with refreshed token...');
+          
+          // Obtener los nuevos tokens
           const newTokens = authUtils.getTokens();
           if (newTokens) {
-            console.log('🔄 Retrying request with refreshed token...');
+            // Actualizar headers con nuevo token
             headers.set('Authorization', `Bearer ${newTokens.idToken}`);
-            const retryResponse = await fetch(url, { ...options, headers });
+            headers.set('X-Auth-Token', newTokens.idToken);
             
-            if (retryResponse.status === 401) {
+            // Pequeña pausa para asegurar sincronización de cookies
+            await new Promise(resolve => setTimeout(resolve, 200));
+            
+            // Reintentar la request
+            response = await fetch(url, { 
+              ...options, 
+              headers,
+              credentials: 'include'
+            });
+            
+            if (response.status === 401) {
               console.log('❌ Still 401 after refresh, logging out');
               authUtils.logout();
               throw new Error('Sesión expirada');
             }
-            
-            return retryResponse;
+          } else {
+            console.log('❌ No tokens found after refresh');
+            authUtils.logout();
+            throw new Error('Error obteniendo tokens después del refresh');
           }
         } else {
-          // Si no se pudo refrescar, redirigir al login
-          console.log('❌ No se pudo refrescar el token, redirigiendo al login');
+          console.log('❌ Refresh failed, logging out');
           authUtils.logout();
           throw new Error('Sesión expirada');
         }
@@ -97,7 +116,11 @@ export async function authenticatedFetch(url: string, options: RequestInit = {})
           if (newTokens) {
             console.log('🔄 Using refreshed token from parallel refresh...');
             headers.set('Authorization', `Bearer ${newTokens.idToken}`);
-            return fetch(url, { ...options, headers });
+            headers.set('X-Auth-Token', newTokens.idToken);
+            
+            await new Promise(resolve => setTimeout(resolve, 200));
+            
+            return fetch(url, { ...options, headers, credentials: 'include' });
           }
         }
       }
@@ -113,33 +136,8 @@ export async function authenticatedFetch(url: string, options: RequestInit = {})
     throw new Error(`Error del servidor: ${response.status}`);
   }
 
+  console.log(`✅ Request successful: ${response.status} for ${url}`);
   return response;
-}
-
-// Wrapper para GET requests
-export async function apiGet(url: string) {
-  return authenticatedFetch(url, { method: 'GET' })
-}
-
-// Wrapper para POST requests
-export async function apiPost(url: string, data: any) {
-  return authenticatedFetch(url, {
-    method: 'POST',
-    body: JSON.stringify(data)
-  })
-}
-
-// Wrapper para PUT requests
-export async function apiPut(url: string, data: any) {
-  return authenticatedFetch(url, {
-    method: 'PUT',
-    body: JSON.stringify(data)
-  })
-}
-
-// Wrapper para DELETE requests
-export async function apiDelete(url: string) {
-  return authenticatedFetch(url, { method: 'DELETE' })
 }
 
 // Hook personalizado mejorado para usar en los componentes
