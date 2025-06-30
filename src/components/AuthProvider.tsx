@@ -1,4 +1,4 @@
-// components/AuthProvider.tsx - CORREGIDO
+// components/AuthProvider.tsx - MEJORADO CON MEJOR REFRESH
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
@@ -41,6 +41,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const pathname = usePathname();
   const isRedirecting = useRef(false);
   const refreshingTokens = useRef(false);
+  const lastRefreshAttempt = useRef<number>(0);
 
   // Rutas que requieren autenticación
   const protectedRoutes = ['/dashboard', '/profile', '/admin', '/projects', '/clients', '/clientes', '/proyectos', '/pagos', '/facturacion', '/analytics', '/configuracion'];
@@ -53,6 +54,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const checkAuth = async (attemptRefresh = true) => {
     try {
+      // Verificar si tenemos tokens válidos
+      const tokens = authUtils.getTokens();
+      if (!tokens) {
+        console.log('🔍 No tokens found');
+        setIsAuthenticated(false);
+        setUser(null);
+        return { authenticated: false, userData: null };
+      }
+
+      // Verificar validez del token
       const authenticated = authUtils.isAuthenticated();
       const userData = authUtils.getCurrentUser();
       
@@ -60,10 +71,19 @@ export function AuthProvider({ children }: AuthProviderProps) {
       
       // Si no está autenticado pero tenemos tokens, intentar refresh
       if (!authenticated && attemptRefresh && !refreshingTokens.current) {
-        const tokens = authUtils.getTokens();
-        if (tokens?.refreshToken) {
+        const now = Date.now();
+        // Evitar refresh muy frecuentes (mínimo 10 segundos entre intentos)
+        if (now - lastRefreshAttempt.current < 10000) {
+          console.log('⏳ Refresh attempt too recent, skipping');
+          setIsAuthenticated(false);
+          setUser(null);
+          return { authenticated: false, userData: null };
+        }
+
+        if (tokens.refreshToken) {
           console.log('🔄 Token expired, attempting refresh...');
           refreshingTokens.current = true;
+          lastRefreshAttempt.current = now;
           
           try {
             const refreshed = await authUtils.refreshTokens();
@@ -76,9 +96,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
               setUser(newUserData);
               refreshingTokens.current = false;
               return { authenticated: newAuthenticated, userData: newUserData };
+            } else {
+              console.log('❌ Refresh failed');
+              setIsAuthenticated(false);
+              setUser(null);
             }
           } catch (error) {
             console.error('❌ Error during refresh:', error);
+            setIsAuthenticated(false);
+            setUser(null);
           } finally {
             refreshingTokens.current = false;
           }
@@ -111,16 +137,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
     };
 
     initAuth();
-
-    // Verificar autenticación cada 5 minutos
-    const interval = setInterval(() => checkAuth(true), 5 * 60 * 1000);
-    
-    return () => clearInterval(interval);
   }, []);
 
-  // Verificar tokens antes de que expiren
+  // Monitor de tokens - verificar cada 2 minutos
   useEffect(() => {
-    const checkTokenExpiration = () => {
+    if (!hasInitialized) return;
+
+    const checkTokenExpiration = async () => {
       const tokens = authUtils.getTokens();
       if (!tokens) return;
 
@@ -130,20 +153,26 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const currentTime = Math.floor(Date.now() / 1000);
       const timeUntilExpiration = tokenData.exp - currentTime;
 
-      // Si el token expira en menos de 5 minutos, refrescar
-      if (timeUntilExpiration > 0 && timeUntilExpiration < 300 && !refreshingTokens.current) {
+      // Si el token expira en menos de 10 minutos, refrescar preemptivamente
+      if (timeUntilExpiration > 0 && timeUntilExpiration < 600 && !refreshingTokens.current) {
         console.log('⏰ Token expires soon, preemptive refresh...');
         refreshingTokens.current = true;
-        authUtils.refreshTokens().finally(() => {
+        
+        try {
+          await authUtils.refreshTokens();
+          await checkAuth(false); // Recheck after refresh
+        } catch (error) {
+          console.error('❌ Preemptive refresh failed:', error);
+        } finally {
           refreshingTokens.current = false;
-        });
+        }
       }
     };
 
-    // Verificar cada minuto
-    const interval = setInterval(checkTokenExpiration, 60 * 1000);
+    // Verificar cada 2 minutos
+    const interval = setInterval(checkTokenExpiration, 2 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [isAuthenticated]);
+  }, [hasInitialized]);
 
   // Manejar redirecciones solo después de la inicialización
   useEffect(() => {
@@ -202,7 +231,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       });
 
       // Actualizar estado inmediatamente
-      const { authenticated, userData } = await checkAuth(false); // No intentar refresh en login
+      const { authenticated, userData } = await checkAuth(false);
       
       if (authenticated && userData) {
         console.log('✅ Login successful, updating state immediately');
@@ -274,44 +303,4 @@ export function useAuth() {
     throw new Error('useAuth debe ser usado dentro de un AuthProvider');
   }
   return context;
-}
-
-// Componente para proteger rutas específicas
-interface ProtectedRouteProps {
-  children: React.ReactNode;
-  fallback?: React.ReactNode;
-}
-
-export function ProtectedRoute({ children, fallback }: ProtectedRouteProps) {
-  const { isAuthenticated, isLoading } = useAuth();
-  const router = useRouter();
-  const pathname = usePathname();
-
-  useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      router.push('/auth/signin?callbackUrl=' + encodeURIComponent(pathname));
-    }
-  }, [isLoading, isAuthenticated, router, pathname]);
-
-  // Mostrar loading mientras verifica
-  if (isLoading) {
-    return (
-      fallback || (
-        <div className="flex items-center justify-center min-h-screen bg-black text-white">
-          <div className="text-center">
-            <div className="w-8 h-8 border-2 border-white/20 border-t-white rounded-full animate-spin mx-auto mb-4" />
-            <div className="text-lg">Verificando autenticación...</div>
-          </div>
-        </div>
-      )
-    );
-  }
-
-  // Si no está autenticado, no mostrar nada (ya redirigió)
-  if (!isAuthenticated) {
-    return null;
-  }
-
-  // Si está autenticado, mostrar el contenido
-  return <>{children}</>;
 }

@@ -1,48 +1,72 @@
-// =====================================================
-// API CLIENT UTILS CORREGIDO - src/lib/api-client.ts
-// =====================================================
-
+// src/lib/api-client.ts - MEJORADO CON MEJOR MANEJO DE REFRESH
 import { authUtils } from '@/lib/auth'
 
-// Función helper para hacer requests autenticadas
+// Función helper para hacer requests autenticadas con mejor manejo de refresh
 export async function authenticatedFetch(url: string, options: RequestInit = {}) {
-  const tokens = authUtils.getTokens()
+  console.log(`🌐 Making authenticated request to: ${url}`);
   
-  if (!tokens) {
-    throw new Error('No hay token de autenticación')
+  // Intentar asegurar que tenemos tokens válidos antes de hacer la request
+  const hasValidTokens = await authUtils.ensureValidTokens();
+  
+  if (!hasValidTokens) {
+    console.log('❌ No valid tokens available, redirecting to login');
+    throw new Error('No hay autenticación válida disponible');
   }
 
-  const headers = new Headers(options.headers)
-  headers.set('Authorization', `Bearer ${tokens.idToken}`)
-  headers.set('Content-Type', 'application/json')
+  const tokens = authUtils.getTokens();
+  
+  if (!tokens) {
+    throw new Error('No hay token de autenticación');
+  }
 
+  const headers = new Headers(options.headers);
+  headers.set('Authorization', `Bearer ${tokens.idToken}`);
+  headers.set('Content-Type', 'application/json');
+
+  console.log(`📡 Sending request with token to: ${url}`);
+  
   const response = await fetch(url, {
     ...options,
     headers
-  })
+  });
 
-  // Si el token expiró, intentar refrescar
+  // Si el token expiró, intentar refrescar UNA vez más
   if (response.status === 401) {
-    console.log('🔄 Token expirado, intentando refrescar...')
-    const refreshed = await authUtils.refreshTokens()
+    console.log('🔄 Received 401, token might be expired, attempting refresh...');
+    
+    const refreshed = await authUtils.refreshTokens();
     
     if (refreshed) {
       // Reintentar con el nuevo token
-      const newTokens = authUtils.getTokens()
+      const newTokens = authUtils.getTokens();
       if (newTokens) {
-        headers.set('Authorization', `Bearer ${newTokens.idToken}`)
-        console.log('🔄 Reintentando request con token renovado...')
-        return fetch(url, { ...options, headers })
+        console.log('🔄 Retrying request with refreshed token...');
+        headers.set('Authorization', `Bearer ${newTokens.idToken}`);
+        const retryResponse = await fetch(url, { ...options, headers });
+        
+        if (retryResponse.status === 401) {
+          console.log('❌ Still 401 after refresh, logging out');
+          authUtils.logout();
+          throw new Error('Sesión expirada');
+        }
+        
+        return retryResponse;
       }
     } else {
       // Si no se pudo refrescar, redirigir al login
-      console.log('❌ No se pudo refrescar el token, redirigiendo al login')
-      authUtils.logout()
-      throw new Error('Sesión expirada')
+      console.log('❌ No se pudo refrescar el token, redirigiendo al login');
+      authUtils.logout();
+      throw new Error('Sesión expirada');
     }
   }
 
-  return response
+  // Para otros errores de servidor, manejar apropiadamente
+  if (!response.ok && response.status >= 500) {
+    console.error(`🚨 Server error ${response.status} for ${url}`);
+    throw new Error(`Error del servidor: ${response.status}`);
+  }
+
+  return response;
 }
 
 // Wrapper para GET requests
@@ -71,7 +95,7 @@ export async function apiDelete(url: string) {
   return authenticatedFetch(url, { method: 'DELETE' })
 }
 
-// Hook personalizado para usar en los componentes
+// Hook personalizado mejorado para usar en los componentes
 import { useState, useCallback } from 'react'
 
 export function useApi() {
@@ -87,6 +111,8 @@ export function useApi() {
       if (showLoading) setLoading(true)
       setError(null)
 
+      console.log(`🎯 API Request: ${options.method || 'GET'} ${url}`);
+
       const response = await authenticatedFetch(url, options)
       
       if (!response.ok) {
@@ -99,6 +125,7 @@ export function useApi() {
           errorData = { error: `HTTP ${response.status}: ${response.statusText}` }
         }
         
+        console.error(`❌ API Error ${response.status} for ${url}:`, errorData);
         throw new Error(errorData.error || `HTTP ${response.status}`)
       }
 
@@ -106,13 +133,17 @@ export function useApi() {
       const contentType = response.headers.get('content-type')
       if (contentType && contentType.includes('application/json')) {
         const data = await response.json()
+        console.log(`✅ API Success: ${options.method || 'GET'} ${url}`);
         return data
       } else {
         // Si no es JSON, devolver texto
-        return await response.text()
+        const text = await response.text()
+        console.log(`✅ API Success (text): ${options.method || 'GET'} ${url}`);
+        return text
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Error desconocido'
+      console.error(`💥 API Request failed for ${url}:`, errorMessage);
       setError(errorMessage)
       throw err
     } finally {

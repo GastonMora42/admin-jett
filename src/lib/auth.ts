@@ -1,4 +1,4 @@
-// lib/auth.ts - CORREGIDO
+// lib/auth.ts - CORREGIDO CON MEJOR MANEJO DE REFRESH
 interface AuthTokens {
   accessToken: string;
   idToken: string;
@@ -84,18 +84,25 @@ export const authUtils = {
       }
 
       const currentTime = Math.floor(Date.now() / 1000);
-      const isValid = tokenData.exp > currentTime;
+      const timeUntilExpiration = tokenData.exp - currentTime;
+      const isValid = timeUntilExpiration > 0;
       
       console.log('🔍 Token validation:', { 
         exp: tokenData.exp, 
         current: currentTime, 
-        isValid,
-        timeLeft: tokenData.exp - currentTime 
+        timeUntilExpiration,
+        isValid 
       });
       
+      // Si está cerca de expirar (menos de 5 minutos), considerar como expirado
+      // para forzar un refresh proactivo
+      if (timeUntilExpiration < 300 && timeUntilExpiration > 0) {
+        console.log('⏰ Token expires soon, will need refresh');
+        return false; // Esto forzará un refresh
+      }
+      
       if (!isValid) {
-        console.log('⏰ Token expired, will try to refresh');
-        // No limpiar tokens aquí, dejar que refresh maneje la limpieza si falla
+        console.log('⏰ Token expired');
       }
       
       return isValid;
@@ -152,7 +159,6 @@ export const authUtils = {
       given_name: idTokenData.given_name || '',
       family_name: idTokenData.family_name || '',
       sub: idTokenData.sub || '',
-      // Incluir otros campos que puedas necesitar
       address: idTokenData.address,
       'custom:role': idTokenData['custom:role'],
     };
@@ -161,7 +167,7 @@ export const authUtils = {
     return user;
   },
 
-  // Refrescar tokens automáticamente - CORREGIDO
+  // Refrescar tokens automáticamente - MEJORADO
   refreshTokens: async (): Promise<boolean> => {
     const tokens = authUtils.getTokens();
     if (!tokens?.refreshToken) {
@@ -171,37 +177,52 @@ export const authUtils = {
 
     try {
       console.log('🔄 Attempting token refresh...');
+      
+      // Preparar la solicitud con mejor manejo de errores
+      const requestBody = { 
+        refreshToken: tokens.refreshToken,
+        idToken: tokens.idToken // Enviar idToken para obtener username
+      };
+
+      console.log('📡 Sending refresh request...');
       const response = await fetch('/api/auth/refresh', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          refreshToken: tokens.refreshToken,
-          idToken: tokens.idToken // ← Enviar idToken para obtener email
-        }),
+        headers: { 
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody),
       });
 
       if (response.ok) {
         const newTokens = await response.json();
+        console.log('✅ New tokens received, saving...');
+        
         authUtils.setTokens(newTokens);
         console.log('✅ Tokens refreshed successfully');
         return true;
       } else {
         const errorData = await response.json();
         console.log('❌ Token refresh failed:', response.status, errorData.error);
+        
+        // Si el error es por token expirado o inválido, limpiar tokens
+        if (response.status === 400 || response.status === 401) {
+          console.log('🗑️ Clearing invalid tokens');
+          authUtils.clearTokens();
+        }
+        
+        return false;
       }
     } catch (error) {
       console.error('❌ Error refreshing tokens:', error);
+      return false;
     }
-
-    // Si falla el refresh, limpiar tokens
-    console.log('🗑️ Clearing tokens due to refresh failure');
-    authUtils.clearTokens();
-    return false;
   },
 
   // Logout completo
   logout: async () => {
     console.log('🚪 Starting logout process...');
+    
+    // Limpiar tokens inmediatamente
     authUtils.clearTokens();
     
     // Opcional: llamar al endpoint de logout del servidor
@@ -218,4 +239,19 @@ export const authUtils = {
       window.location.href = '/auth/signin';
     }
   },
+
+  // Nueva función: verificar y refrescar tokens si es necesario
+  ensureValidTokens: async (): Promise<boolean> => {
+    console.log('🔍 Checking token validity...');
+    
+    // Si ya está autenticado, todo bien
+    if (authUtils.isAuthenticated()) {
+      console.log('✅ Tokens are valid');
+      return true;
+    }
+
+    // Si no está autenticado, intentar refresh
+    console.log('🔄 Tokens expired or invalid, attempting refresh...');
+    return await authUtils.refreshTokens();
+  }
 };
