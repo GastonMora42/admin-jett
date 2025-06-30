@@ -1,7 +1,7 @@
-// src/app/api/auth/refresh/route.ts - VERSIÓN DEBUG
+// src/app/api/auth/refresh/route.ts - VERSIÓN CORREGIDA
 import { CognitoIdentityProviderClient, InitiateAuthCommand } from '@aws-sdk/client-cognito-identity-provider';
 import { NextResponse } from 'next/server';
-import { getSecretHash, cognitoConfig } from '@/lib/cognito-utils';
+import { getSecretHash, cognitoConfig, extractUsernameFromToken } from '@/lib/cognito-utils';
 
 function decodeToken(token: string): any {
   try {
@@ -18,24 +18,17 @@ function decodeToken(token: string): any {
     
     return JSON.parse(jsonPayload);
   } catch (error) {
-    console.error('❌ [REFRESH] Error decoding token:', error);
+    console.error('❌ Error decoding token:', error);
     return null;
   }
 }
 
 export async function POST(request: Request) {
   try {
-    console.log('🔄 [REFRESH] ===== INICIANDO REFRESH =====');
+    console.log('🔄 [REFRESH] Iniciando refresh de tokens...');
     
     const body = await request.json();
     const { refreshToken, idToken } = body;
-
-    console.log('🔄 [REFRESH] Request body received:', {
-      hasRefreshToken: !!refreshToken,
-      hasIdToken: !!idToken,
-      refreshTokenLength: refreshToken?.length || 0,
-      idTokenLength: idToken?.length || 0
-    });
 
     if (!refreshToken) {
       console.log('❌ [REFRESH] No refresh token provided');
@@ -45,113 +38,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // Decodificar idToken para análisis
-    if (idToken) {
-      const decodedToken = decodeToken(idToken);
-      console.log('🔍 [REFRESH] Token decodificado completo:', {
-        email: decodedToken?.email,
-        username: decodedToken?.username,
-        sub: decodedToken?.sub,
-        cognito_username: decodedToken?.['cognito:username'],
-        aud: decodedToken?.aud,
-        iss: decodedToken?.iss,
-        exp: decodedToken?.exp,
-        iat: decodedToken?.iat,
-        token_use: decodedToken?.token_use,
-        auth_time: decodedToken?.auth_time,
-        allFields: Object.keys(decodedToken || {})
-      });
-
-      // Determinar username para SECRET_HASH
-      const username = decodedToken?.email || decodedToken?.username || decodedToken?.sub || '';
-      console.log('🔍 [REFRESH] Username seleccionado para SECRET_HASH:', username);
-
-      if (!username) {
-        console.log('❌ [REFRESH] No se pudo extraer username del token');
-        return NextResponse.json(
-          { error: 'No se pudo obtener información del usuario del token' },
-          { status: 400 }
-        );
-      }
-
-      // Mostrar configuración de Cognito (sin secrets)
-      console.log('🔍 [REFRESH] Configuración Cognito:', {
-        region: cognitoConfig.region,
-        clientId: cognitoConfig.clientId,
-        hasClientSecret: !!cognitoConfig.clientSecret,
-        clientSecretLength: cognitoConfig.clientSecret?.length || 0
-      });
-
-      const cognitoClient = new CognitoIdentityProviderClient({
-        region: cognitoConfig.region,
-      });
-
-      // Generar SECRET_HASH con debugging
-      let secretHash;
-      try {
-        secretHash = getSecretHash(username);
-        console.log('🔐 [REFRESH] SECRET_HASH generado exitosamente para:', username);
-        console.log('🔐 [REFRESH] SECRET_HASH (primeros 10 chars):', secretHash.substring(0, 10) + '...');
-      } catch (error) {
-        console.log('❌ [REFRESH] Error generando SECRET_HASH:', error);
-        return NextResponse.json(
-          { error: 'Error generando SECRET_HASH' },
-          { status: 500 }
-        );
-      }
-
-      const authParameters = {
-        REFRESH_TOKEN: refreshToken,
-        SECRET_HASH: secretHash,
-      };
-
-      console.log('🔍 [REFRESH] AuthParameters:', {
-        hasRefreshToken: !!authParameters.REFRESH_TOKEN,
-        hasSecretHash: !!authParameters.SECRET_HASH,
-        refreshTokenLength: authParameters.REFRESH_TOKEN?.length || 0,
-        secretHashLength: authParameters.SECRET_HASH?.length || 0
-      });
-
-      const refreshCommand = new InitiateAuthCommand({
-        ClientId: cognitoConfig.clientId,
-        AuthFlow: 'REFRESH_TOKEN_AUTH',
-        AuthParameters: authParameters,
-      });
-
-      console.log('📡 [REFRESH] Enviando comando a Cognito...');
-      console.log('📡 [REFRESH] Comando details:', {
-        ClientId: cognitoConfig.clientId,
-        AuthFlow: 'REFRESH_TOKEN_AUTH',
-        hasAuthParameters: !!refreshCommand.AuthParameters
-      });
-
-      const result = await cognitoClient.send(refreshCommand);
-      const authResult = result.AuthenticationResult;
-
-      if (!authResult) {
-        console.log('❌ [REFRESH] No AuthenticationResult received');
-        return NextResponse.json(
-          { error: 'Error al refrescar tokens' },
-          { status: 400 }
-        );
-      }
-
-      console.log('✅ [REFRESH] Tokens refreshed successfully');
-      console.log('✅ [REFRESH] New tokens received:', {
-        hasAccessToken: !!authResult.AccessToken,
-        hasIdToken: !!authResult.IdToken,
-        hasRefreshToken: !!authResult.RefreshToken,
-        expiresIn: authResult.ExpiresIn
-      });
-
-      return NextResponse.json({
-        accessToken: authResult.AccessToken,
-        idToken: authResult.IdToken,
-        refreshToken: authResult.RefreshToken || refreshToken,
-        expiresIn: authResult.ExpiresIn,
-      });
-
-    } else {
+    if (!idToken) {
       console.log('❌ [REFRESH] No idToken provided for username extraction');
       return NextResponse.json(
         { error: 'idToken es requerido para el refresh' },
@@ -159,27 +46,91 @@ export async function POST(request: Request) {
       );
     }
 
+    // Decodificar el idToken para obtener el username correcto
+    const decodedToken = decodeToken(idToken);
+    if (!decodedToken) {
+      console.log('❌ [REFRESH] No se pudo decodificar el idToken');
+      return NextResponse.json(
+        { error: 'Token inválido' },
+        { status: 400 }
+      );
+    }
+
+    // CRÍTICO: Usar la función nueva para extraer username
+    let username: string;
+    try {
+      username = extractUsernameFromToken(decodedToken);
+    } catch (error) {
+      console.log('❌ [REFRESH] Error extrayendo username:', error);
+      return NextResponse.json(
+        { error: 'No se pudo obtener información del usuario del token' },
+        { status: 400 }
+      );
+    }
+
+    console.log('🔍 [REFRESH] Username para SECRET_HASH:', username);
+
+    const cognitoClient = new CognitoIdentityProviderClient({
+      region: cognitoConfig.region,
+    });
+
+    // Generar SECRET_HASH con el username correcto
+    let secretHash: string;
+    try {
+      secretHash = getSecretHash(username);
+      console.log('🔐 [REFRESH] SECRET_HASH generado exitosamente');
+    } catch (error) {
+      console.log('❌ [REFRESH] Error generando SECRET_HASH:', error);
+      return NextResponse.json(
+        { error: 'Error generando SECRET_HASH' },
+        { status: 500 }
+      );
+    }
+
+    // Preparar comando de refresh
+    const refreshCommand = new InitiateAuthCommand({
+      ClientId: cognitoConfig.clientId,
+      AuthFlow: 'REFRESH_TOKEN_AUTH',
+      AuthParameters: {
+        REFRESH_TOKEN: refreshToken,
+        SECRET_HASH: secretHash,
+      },
+    });
+
+    console.log('📡 [REFRESH] Enviando comando a Cognito...');
+
+    // Ejecutar refresh
+    const result = await cognitoClient.send(refreshCommand);
+    const authResult = result.AuthenticationResult;
+
+    if (!authResult) {
+      console.log('❌ [REFRESH] No AuthenticationResult received');
+      return NextResponse.json(
+        { error: 'Error al refrescar tokens' },
+        { status: 400 }
+      );
+    }
+
+    console.log('✅ [REFRESH] Tokens refreshed successfully');
+
+    return NextResponse.json({
+      accessToken: authResult.AccessToken,
+      idToken: authResult.IdToken,
+      refreshToken: authResult.RefreshToken || refreshToken, // Usar el nuevo si viene, sino el anterior
+      expiresIn: authResult.ExpiresIn,
+    });
+
   } catch (error: any) {
-    console.log('❌ [REFRESH] ===== ERROR COMPLETO =====');
-    console.log('❌ [REFRESH] Error name:', error.name);
-    console.log('❌ [REFRESH] Error message:', error.message);
-    console.log('❌ [REFRESH] Error stack:', error.stack);
-    console.log('❌ [REFRESH] Error metadata:', error.$metadata);
-    console.log('❌ [REFRESH] Error fault:', error.$fault);
+    console.log('❌ [REFRESH] Error:', error.name, error.message);
     
     let errorMessage = 'Error interno del servidor';
     
     if (error.name === 'NotAuthorizedException') {
-      console.log('🔒 [REFRESH] NotAuthorizedException - analizando...');
-      
       if (error.message?.includes('SecretHash')) {
-        console.log('🔑 [REFRESH] Error específico de SECRET_HASH');
-        errorMessage = 'Error de SECRET_HASH - verificar configuración';
+        errorMessage = 'Error de SECRET_HASH - configuración incorrecta';
       } else if (error.message?.includes('refresh token')) {
-        console.log('🔄 [REFRESH] Error de refresh token');
         errorMessage = 'Refresh token inválido o expirado';
       } else {
-        console.log('🔒 [REFRESH] Otra causa de NotAuthorizedException');
         errorMessage = 'Token de actualización inválido';
       }
     } else if (error.name === 'UserNotFoundException') {

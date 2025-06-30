@@ -1,4 +1,4 @@
-// components/AuthProvider.tsx - MEJORADO CON MEJOR REFRESH
+// components/AuthProvider.tsx - CON MEJOR SINCRONIZACIÓN
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
@@ -11,7 +11,6 @@ interface User {
   given_name: string;
   family_name: string;
   sub: string;
-  address?: any;
   'custom:role'?: string;
 }
 
@@ -22,7 +21,6 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   refreshAuth: () => Promise<boolean>;
-  forceRefresh: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -39,111 +37,155 @@ export function AuthProvider({ children }: AuthProviderProps) {
   
   const router = useRouter();
   const pathname = usePathname();
-  const isRedirecting = useRef(false);
-  const refreshingTokens = useRef(false);
-  const lastRefreshAttempt = useRef<number>(0);
+  const refreshingRef = useRef(false);
 
-  // Rutas que requieren autenticación
-  const protectedRoutes = ['/dashboard', '/profile', '/admin', '/projects', '/clients', '/clientes', '/proyectos', '/pagos', '/facturacion', '/analytics', '/configuracion'];
-  
-  // Rutas que solo pueden acceder usuarios no autenticados
-  const publicOnlyRoutes = ['/auth/signin', '/auth/register'];
+  // Rutas públicas
+  const publicRoutes = ['/', '/auth/signin', '/auth/register', '/auth/error', '/auth/confirm'];
+  const protectedRoutes = ['/dashboard', '/clientes', '/proyectos', '/pagos', '/facturacion', '/analytics', '/configuracion'];
 
-  // Rutas completamente públicas
-  const publicRoutes = ['/', '/auth/error', '/auth/suspended', '/auth/unauthorized', '/auth/confirm'];
-
+  // Función para verificar autenticación con mejor sincronización
   const checkAuth = async (attemptRefresh = true) => {
     try {
-      // Verificar si tenemos tokens válidos
+      console.log('🔍 Checking authentication state...');
+      
       const tokens = authUtils.getTokens();
       if (!tokens) {
-        console.log('🔍 No tokens found');
+        console.log('❌ No tokens found');
         setIsAuthenticated(false);
         setUser(null);
-        return { authenticated: false, userData: null };
+        return false;
       }
 
-      // Verificar validez del token
       const authenticated = authUtils.isAuthenticated();
       const userData = authUtils.getCurrentUser();
       
-      console.log('🔍 Checking auth:', { authenticated, userData: !!userData, pathname });
+      console.log('🔍 Auth check result:', { 
+        authenticated, 
+        hasUser: !!userData,
+        email: userData?.email 
+      });
       
       // Si no está autenticado pero tenemos tokens, intentar refresh
-      if (!authenticated && attemptRefresh && !refreshingTokens.current) {
-        const now = Date.now();
-        // Evitar refresh muy frecuentes (mínimo 10 segundos entre intentos)
-        if (now - lastRefreshAttempt.current < 10000) {
-          console.log('⏳ Refresh attempt too recent, skipping');
-          setIsAuthenticated(false);
-          setUser(null);
-          return { authenticated: false, userData: null };
-        }
-
-        if (tokens.refreshToken) {
-          console.log('🔄 Token expired, attempting refresh...');
-          refreshingTokens.current = true;
-          lastRefreshAttempt.current = now;
-          
-          try {
-            const refreshed = await authUtils.refreshTokens();
-            if (refreshed) {
-              console.log('✅ Tokens refreshed, rechecking auth...');
-              const newAuthenticated = authUtils.isAuthenticated();
-              const newUserData = authUtils.getCurrentUser();
-              
-              setIsAuthenticated(newAuthenticated);
-              setUser(newUserData);
-              refreshingTokens.current = false;
-              return { authenticated: newAuthenticated, userData: newUserData };
-            } else {
-              console.log('❌ Refresh failed');
-              setIsAuthenticated(false);
-              setUser(null);
-            }
-          } catch (error) {
-            console.error('❌ Error during refresh:', error);
+      if (!authenticated && attemptRefresh && tokens.refreshToken && !refreshingRef.current) {
+        console.log('🔄 Token appears expired, attempting refresh...');
+        refreshingRef.current = true;
+        
+        try {
+          const refreshed = await authUtils.refreshTokens();
+          if (refreshed) {
+            console.log('✅ Tokens refreshed, rechecking auth state...');
+            const newAuthenticated = authUtils.isAuthenticated();
+            const newUserData = authUtils.getCurrentUser();
+            
+            setIsAuthenticated(newAuthenticated);
+            setUser(newUserData);
+            return newAuthenticated;
+          } else {
+            console.log('❌ Refresh failed, clearing state');
             setIsAuthenticated(false);
             setUser(null);
-          } finally {
-            refreshingTokens.current = false;
+            return false;
           }
+        } catch (error) {
+          console.error('❌ Error during refresh:', error);
+          setIsAuthenticated(false);
+          setUser(null);
+          return false;
+        } finally {
+          refreshingRef.current = false;
         }
       }
       
+      // Actualizar estado basado en la verificación actual
       setIsAuthenticated(authenticated);
       setUser(userData);
+      return authenticated;
       
-      return { authenticated, userData };
     } catch (error) {
-      console.error('❌ Error checking auth:', error);
+      console.error('❌ Error in checkAuth:', error);
       setIsAuthenticated(false);
       setUser(null);
-      return { authenticated: false, userData: null };
+      return false;
     }
   };
 
-  // Inicialización inicial
+  // Inicialización
   useEffect(() => {
     const initAuth = async () => {
-      console.log('🚀 Initializing auth...');
+      console.log('🚀 Initializing authentication...');
       setIsLoading(true);
       
       await checkAuth();
       
       setIsLoading(false);
       setHasInitialized(true);
-      console.log('✅ Auth initialized');
+      console.log('✅ Authentication initialized');
     };
 
     initAuth();
   }, []);
 
-  // Monitor de tokens - verificar cada 2 minutos
+  // Listener para cambios en tokens (para sincronización)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleTokensUpdated = () => {
+      console.log('🔄 Tokens updated, rechecking auth...');
+      checkAuth(false);
+    };
+
+    const handleTokensCleared = () => {
+      console.log('🗑️ Tokens cleared, updating state...');
+      setIsAuthenticated(false);
+      setUser(null);
+    };
+
+    window.addEventListener('auth-tokens-updated', handleTokensUpdated);
+    window.addEventListener('auth-tokens-cleared', handleTokensCleared);
+
+    return () => {
+      window.removeEventListener('auth-tokens-updated', handleTokensUpdated);
+      window.removeEventListener('auth-tokens-cleared', handleTokensCleared);
+    };
+  }, []);
+
+  // Manejo de redirecciones
+  useEffect(() => {
+    if (!hasInitialized || isLoading || refreshingRef.current) {
+      return;
+    }
+
+    const isProtectedRoute = protectedRoutes.some(route => pathname.startsWith(route));
+    const isPublicRoute = publicRoutes.includes(pathname) || pathname.startsWith('/auth/');
+
+    console.log('🎯 Route check:', { 
+      pathname, 
+      isAuthenticated, 
+      isProtectedRoute, 
+      isPublicRoute 
+    });
+
+    // Redirigir a login si es ruta protegida sin autenticación
+    if (isProtectedRoute && !isAuthenticated) {
+      console.log('🔒 Redirecting to login from protected route');
+      router.push('/auth/signin?callbackUrl=' + encodeURIComponent(pathname));
+      return;
+    }
+    
+    // Redirigir a dashboard si está autenticado en login
+    if (isAuthenticated && pathname === '/auth/signin') {
+      console.log('✅ Authenticated user on login page, redirecting to dashboard');
+      router.push('/dashboard');
+      return;
+    }
+
+  }, [pathname, isAuthenticated, hasInitialized, isLoading, router]);
+
+  // Monitor de salud de tokens cada 2 minutos
   useEffect(() => {
     if (!hasInitialized) return;
 
-    const checkTokenExpiration = async () => {
+    const monitorTokenHealth = async () => {
       const tokens = authUtils.getTokens();
       if (!tokens) return;
 
@@ -153,64 +195,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const currentTime = Math.floor(Date.now() / 1000);
       const timeUntilExpiration = tokenData.exp - currentTime;
 
-      // Si el token expira en menos de 10 minutos, refrescar preemptivamente
-      if (timeUntilExpiration > 0 && timeUntilExpiration < 600 && !refreshingTokens.current) {
-        console.log('⏰ Token expires soon, preemptive refresh...');
-        refreshingTokens.current = true;
-        
-        try {
-          await authUtils.refreshTokens();
-          await checkAuth(false); // Recheck after refresh
-        } catch (error) {
-          console.error('❌ Preemptive refresh failed:', error);
-        } finally {
-          refreshingTokens.current = false;
-        }
+      // Refresh preventivo si expira en menos de 10 minutos
+      if (timeUntilExpiration > 0 && timeUntilExpiration < 600 && !refreshingRef.current) {
+        console.log('⏰ Token expires soon, preventive refresh...');
+        await checkAuth(true);
       }
     };
 
-    // Verificar cada 2 minutos
-    const interval = setInterval(checkTokenExpiration, 2 * 60 * 1000);
+    const interval = setInterval(monitorTokenHealth, 2 * 60 * 1000); // Cada 2 minutos
     return () => clearInterval(interval);
   }, [hasInitialized]);
 
-  // Manejar redirecciones solo después de la inicialización
-  useEffect(() => {
-    if (!hasInitialized || isLoading || isRedirecting.current || refreshingTokens.current) {
-      return;
-    }
-
-    const handleRedirection = () => {
-      const isProtectedRoute = protectedRoutes.some(route => pathname.startsWith(route));
-      const isPublicOnlyRoute = publicOnlyRoutes.some(route => pathname.startsWith(route));
-      const isPublicRoute = publicRoutes.includes(pathname) || pathname.startsWith('/auth/');
-
-      console.log('🎯 Route check:', { 
-        pathname, 
-        isAuthenticated, 
-        isProtectedRoute, 
-        isPublicOnlyRoute, 
-        isPublicRoute 
-      });
-
-      // Solo redirigir a login si es una ruta protegida y NO está autenticado
-      if (isProtectedRoute && !isAuthenticated) {
-        console.log('🔒 Redirecting to login: protected route without auth');
-        isRedirecting.current = true;
-        router.push('/auth/signin?callbackUrl=' + encodeURIComponent(pathname));
-        setTimeout(() => { isRedirecting.current = false; }, 2000);
-      }
-    };
-
-    // Delay para evitar redirecciones inmediatas
-    const timeoutId = setTimeout(handleRedirection, 200);
-    
-    return () => clearTimeout(timeoutId);
-  }, [pathname, isAuthenticated, hasInitialized, isLoading, router]);
-
   const login = async (email: string, password: string) => {
     try {
-      console.log('🔐 Attempting login...');
+      console.log('🔐 Starting login process...');
+      setIsLoading(true);
+      
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -220,63 +220,60 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Error de autenticación');
+        throw new Error(data.error || 'Authentication error');
       }
 
-      // Guardar tokens
+      console.log('✅ Login API call successful, saving tokens...');
+
+      // Guardar tokens INMEDIATAMENTE
       authUtils.setTokens({
         accessToken: data.accessToken,
         idToken: data.idToken,
         refreshToken: data.refreshToken,
       });
 
-      // Actualizar estado inmediatamente
-      const { authenticated, userData } = await checkAuth(false);
+      // CRÍTICO: Esperar un poco para que las cookies se establezcan
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Verificar estado INMEDIATAMENTE después de guardar tokens
+      const authSuccess = await checkAuth(false);
       
-      if (authenticated && userData) {
-        console.log('✅ Login successful, updating state immediately');
-        setUser(userData);
-        setIsAuthenticated(true);
-        setHasInitialized(true);
+      console.log('✅ Login complete:', { 
+        tokensSet: true, 
+        authSuccess,
+        user: authUtils.getCurrentUser()?.email 
+      });
+      
+      if (!authSuccess) {
+        throw new Error('Failed to establish authentication state after login');
       }
-      
-      console.log('✅ Login result:', { authenticated, userData: !!userData });
       
       return { success: true };
     } catch (error: any) {
       console.error('❌ Login error:', error);
       return { success: false, error: error.message };
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const logout = async () => {
-    console.log('🚪 Logging out...');
+    console.log('🚪 Starting logout...');
+    setIsLoading(true);
+    
     await authUtils.logout();
     setUser(null);
     setIsAuthenticated(false);
+    setIsLoading(false);
   };
 
   const refreshAuth = async () => {
-    if (refreshingTokens.current) {
+    if (refreshingRef.current) {
       console.log('⏳ Refresh already in progress...');
       return false;
     }
 
-    const success = await authUtils.refreshTokens();
-    if (success) {
-      const { authenticated, userData } = await checkAuth(false);
-      return authenticated;
-    } else {
-      setUser(null);
-      setIsAuthenticated(false);
-    }
-    return success;
-  };
-
-  const forceRefresh = async () => {
-    console.log('🔄 Force refreshing auth state...');
-    const { authenticated, userData } = await checkAuth(false);
-    console.log('🔄 Force refresh result:', { authenticated, userData: !!userData });
+    return await checkAuth(true);
   };
 
   const value: AuthContextType = {
@@ -286,7 +283,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
     login,
     logout,
     refreshAuth,
-    forceRefresh,
   };
 
   return (
@@ -296,11 +292,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
   );
 }
 
-// Hook para usar el contexto de autenticación
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth debe ser usado dentro de un AuthProvider');
+    throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
 }

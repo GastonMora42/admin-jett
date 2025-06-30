@@ -1,4 +1,4 @@
-// src/app/api/auth/login/route.ts
+// src/app/api/auth/login/route.ts - CORREGIDO
 import { CognitoIdentityProviderClient, InitiateAuthCommand } from '@aws-sdk/client-cognito-identity-provider';
 import { NextResponse } from 'next/server';
 import { getSecretHash, cognitoConfig } from '@/lib/cognito-utils';
@@ -14,26 +14,29 @@ export async function POST(request: Request) {
       );
     }
 
+    console.log('🔐 [LOGIN] Intento de login para:', email);
+
     const cognitoClient = new CognitoIdentityProviderClient({
       region: cognitoConfig.region,
     });
 
-    // Generar SECRET_HASH
+    // CRÍTICO: Para login, el username ES el email
+    // Cognito registra el usuario con email como username
     const secretHash = getSecretHash(email);
 
     const authCommand = new InitiateAuthCommand({
       ClientId: cognitoConfig.clientId,
-      AuthFlow: 'USER_PASSWORD_AUTH', // Asegúrate de que este flow esté habilitado en Cognito
+      AuthFlow: 'USER_PASSWORD_AUTH',
       AuthParameters: {
         USERNAME: email,
         PASSWORD: password,
-        SECRET_HASH: secretHash, // ← Agregado
+        SECRET_HASH: secretHash,
       },
     });
 
-    const result = await cognitoClient.send(authCommand);
+    console.log('📡 [LOGIN] Enviando comando a Cognito...');
 
-    // Extraer tokens de la respuesta
+    const result = await cognitoClient.send(authCommand);
     const authResult = result.AuthenticationResult;
     
     if (!authResult) {
@@ -42,6 +45,8 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+
+    console.log('✅ [LOGIN] Login exitoso para:', email);
 
     return NextResponse.json({
       message: 'Login exitoso',
@@ -52,7 +57,7 @@ export async function POST(request: Request) {
     });
 
   } catch (error: any) {
-    console.error('Error en login:', error);
+    console.error('❌ [LOGIN] Error:', error.name, error.message);
     
     let errorMessage = 'Error interno del servidor';
     
@@ -62,6 +67,8 @@ export async function POST(request: Request) {
       errorMessage = 'Usuario no confirmado. Verifica tu email.';
     } else if (error.name === 'UserNotFoundException') {
       errorMessage = 'Usuario no encontrado';
+    } else if (error.name === 'TooManyRequestsException') {
+      errorMessage = 'Demasiados intentos. Intenta más tarde.';
     }
     
     return NextResponse.json(

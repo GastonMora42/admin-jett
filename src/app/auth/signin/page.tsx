@@ -20,11 +20,10 @@ export default function SignInPage() {
   
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { login, isAuthenticated, isLoading, forceRefresh } = useAuth() // Usar el contexto
+  const { login, isAuthenticated, isLoading } = useAuth() // Usar el contexto, eliminado forceRefresh porque no existe en AuthContextType
   
   const callbackUrl = searchParams.get('callbackUrl') || '/dashboard'
   const urlMessage = searchParams.get('message')
-  
   useEffect(() => {
     // Solo verificar redirección si no está en proceso de loading
     if (isLoading) {
@@ -76,13 +75,14 @@ export default function SignInPage() {
 
       if (result.success) {
         console.log('✅ Login successful, forcing auth refresh...')
-        
+
         // Forzar actualización del estado de autenticación
-        await forceRefresh()
-        
-        console.log('✅ Auth state refreshed, redirecting to:', callbackUrl)
-        
-        // Pequeño delay para asegurar que el estado se ha actualizado
+        if (typeof window !== 'undefined' && typeof window.location !== 'undefined') {
+          // Recargar la página para asegurar que el estado de autenticación se actualice correctamente
+          window.location.reload()
+        } else {
+          console.log('⚠️ No se pudo forzar la actualización del estado de autenticación (no window disponible)')
+        }
         setTimeout(() => {
           router.push(callbackUrl)
         }, 100)

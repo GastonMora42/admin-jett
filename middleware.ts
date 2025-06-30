@@ -1,4 +1,4 @@
-// middleware.ts - VERSIÓN DEBUG CON LOGS DETALLADOS
+// middleware.ts - VERSIÓN SIMPLIFICADA
 import { NextRequest, NextResponse } from 'next/server'
 
 interface DecodedToken {
@@ -39,12 +39,9 @@ function isTokenValid(token: DecodedToken): boolean {
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
   
-  console.log('🛡️ [MIDDLEWARE] ===== NUEVO REQUEST =====')
-  console.log('🛡️ [MIDDLEWARE] Pathname:', pathname)
-  console.log('🛡️ [MIDDLEWARE] Method:', request.method)
-  console.log('🛡️ [MIDDLEWARE] URL completa:', request.url)
+  console.log('🛡️ [MIDDLEWARE] Request:', pathname)
 
-  // Rutas públicas
+  // Rutas públicas que no requieren autenticación
   const publicRoutes = [
     '/',
     '/auth/signin',
@@ -59,80 +56,52 @@ export function middleware(request: NextRequest) {
   const isPublicRoute = publicRoutes.includes(pathname) || pathname.startsWith('/auth/')
   
   if (isPublicRoute) {
-    console.log('✅ [MIDDLEWARE] Ruta pública permitida:', pathname)
+    console.log('✅ [MIDDLEWARE] Ruta pública permitida')
     return NextResponse.next()
   }
 
-  // DEBUGGING COMPLETO DE HEADERS Y COOKIES
-  console.log('🔍 [MIDDLEWARE] === DEBUGGING TOKENS ===')
-  
-  // Log todos los headers
-  console.log('🔍 [MIDDLEWARE] Todos los headers:')
-  request.headers.forEach((value, key) => {
-    console.log(`🔍 [MIDDLEWARE]   ${key}: ${value}`)
-  })
-  
-  // Log todas las cookies
-  console.log('🔍 [MIDDLEWARE] Todas las cookies:')
-  request.cookies.getAll().forEach(cookie => {
-    console.log(`🔍 [MIDDLEWARE]   ${cookie.name}: ${cookie.value?.substring(0, 20)}...`)
-  })
-
+  // Buscar token en múltiples fuentes
   let token: string | null = null
-  let tokenSource = 'none'
 
   // 1. Authorization header
   const authHeader = request.headers.get('authorization')
-  console.log('🔍 [MIDDLEWARE] Authorization header:', authHeader ? `${authHeader.substring(0, 20)}...` : 'NO ENCONTRADO')
-  
   if (authHeader && authHeader.startsWith('Bearer ')) {
     token = authHeader.substring(7)
-    tokenSource = 'authorization_header'
-    console.log('🔑 [MIDDLEWARE] Token encontrado en Authorization header')
+    console.log('🔑 [MIDDLEWARE] Token desde Authorization header')
   }
   
   // 2. Cookie 'token'
   if (!token) {
     const tokenCookie = request.cookies.get('token')?.value
-    console.log('🔍 [MIDDLEWARE] Cookie "token":', tokenCookie ? `${tokenCookie.substring(0, 20)}...` : 'NO ENCONTRADO')
-    
     if (tokenCookie) {
       token = tokenCookie
-      tokenSource = 'cookie_token'
-      console.log('🔑 [MIDDLEWARE] Token encontrado en cookie "token"')
+      console.log('🔑 [MIDDLEWARE] Token desde cookie')
     }
   }
 
   // 3. Cookie 'idToken'
   if (!token) {
     const idTokenCookie = request.cookies.get('idToken')?.value
-    console.log('🔍 [MIDDLEWARE] Cookie "idToken":', idTokenCookie ? `${idTokenCookie.substring(0, 20)}...` : 'NO ENCONTRADO')
-    
     if (idTokenCookie) {
       token = idTokenCookie
-      tokenSource = 'cookie_idToken'
-      console.log('🔑 [MIDDLEWARE] Token encontrado en cookie "idToken"')
+      console.log('🔑 [MIDDLEWARE] Token desde cookie idToken')
     }
   }
 
-  console.log('🔍 [MIDDLEWARE] Resultado búsqueda token:')
-  console.log('🔍 [MIDDLEWARE]   - Token encontrado:', !!token)
-  console.log('🔍 [MIDDLEWARE]   - Fuente:', tokenSource)
-  console.log('🔍 [MIDDLEWARE]   - Longitud:', token?.length || 0)
-
   // Para páginas (no APIs), ser más permisivo
   if (!pathname.startsWith('/api/')) {
-    console.log('📄 [MIDDLEWARE] Es una página, no API')
+    console.log('📄 [MIDDLEWARE] Es una página')
     
     if (!token) {
-      console.log('📄 [MIDDLEWARE] Página sin token - permitiendo pasar, AuthProvider manejará')
+      console.log('📄 [MIDDLEWARE] Sin token - permitiendo, AuthProvider manejará')
       return NextResponse.next()
     }
     
     const decodedToken = decodeToken(token)
     if (decodedToken && isTokenValid(decodedToken)) {
-      console.log('✅ [MIDDLEWARE] Página: Token válido para:', decodedToken.email)
+      console.log('✅ [MIDDLEWARE] Token válido para página')
       
+      // Agregar headers de usuario para facilitar el uso en server components
       const requestHeaders = new Headers(request.headers)
       requestHeaders.set('x-user-id', decodedToken.sub)
       requestHeaders.set('x-user-email', decodedToken.email)
@@ -144,61 +113,47 @@ export function middleware(request: NextRequest) {
       })
     }
     
-    console.log('📄 [MIDDLEWARE] Página: Token inválido, pero permitiendo pasar')
+    console.log('📄 [MIDDLEWARE] Token inválido - permitiendo, AuthProvider manejará')
     return NextResponse.next()
   }
 
   // Para APIs, ser estricto
-  console.log('🔌 [MIDDLEWARE] Es una API, verificando token estrictamente')
+  console.log('🔌 [MIDDLEWARE] Es una API - verificación estricta')
   
   if (!token) {
-    console.log('❌ [MIDDLEWARE] API: No token provided for', pathname)
-    console.log('❌ [MIDDLEWARE] Fuentes revisadas: Authorization header, cookie "token", cookie "idToken"')
+    console.log('❌ [MIDDLEWARE] API sin token')
     return NextResponse.json({ error: 'No autorizado - Token requerido' }, { status: 401 })
   }
 
   const decodedToken = decodeToken(token)
   if (!decodedToken) {
-    console.log('❌ [MIDDLEWARE] API: Invalid token format for', pathname)
+    console.log('❌ [MIDDLEWARE] Token inválido')
     return NextResponse.json({ error: 'Token inválido' }, { status: 401 })
   }
 
-  console.log('🔍 [MIDDLEWARE] Token decodificado:', {
-    email: decodedToken.email,
-    sub: decodedToken.sub,
-    exp: decodedToken.exp,
-    current: Math.floor(Date.now() / 1000),
-    valid: isTokenValid(decodedToken)
-  })
-
   if (!isTokenValid(decodedToken)) {
-    console.log('❌ [MIDDLEWARE] API: Expired token for', pathname)
+    console.log('❌ [MIDDLEWARE] Token expirado')
     return NextResponse.json({ error: 'Token expirado' }, { status: 401 })
   }
 
   const userRole = decodedToken['custom:role'] || 'VENTAS'
   
-  // Verificar permisos específicos
-  if (pathname.startsWith('/api/usuarios')) {
+  // Verificar permisos específicos para rutas sensibles
+  if (pathname.startsWith('/api/usuarios') || pathname.startsWith('/api/admin')) {
     if (!['SUPERADMIN', 'ADMIN'].includes(userRole)) {
-      console.log('❌ [MIDDLEWARE] API: Insufficient permissions for user management:', userRole)
-      return NextResponse.json({ error: 'Sin permisos para gestión de usuarios' }, { status: 403 })
+      console.log('❌ [MIDDLEWARE] Sin permisos admin:', userRole)
+      return NextResponse.json({ error: 'Sin permisos suficientes' }, { status: 403 })
     }
   }
 
-  // Agregar headers de usuario
+  // Agregar headers de usuario para APIs
   const requestHeaders = new Headers(request.headers)
   requestHeaders.set('x-user-id', decodedToken.sub)
   requestHeaders.set('x-user-email', decodedToken.email)
   requestHeaders.set('x-user-role', userRole)
   requestHeaders.set('x-user-name', `${decodedToken.given_name} ${decodedToken.family_name}`)
 
-  console.log('✅ [MIDDLEWARE] API: Token válido para:', decodedToken.email, 'Role:', userRole)
-  console.log('✅ [MIDDLEWARE] Headers agregados:', {
-    'x-user-id': decodedToken.sub,
-    'x-user-email': decodedToken.email,
-    'x-user-role': userRole
-  })
+  console.log('✅ [MIDDLEWARE] API autorizada para:', decodedToken.email)
   
   return NextResponse.next({
     request: { headers: requestHeaders }
