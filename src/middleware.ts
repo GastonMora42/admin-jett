@@ -1,4 +1,4 @@
-// src/middleware.ts - VERSIÓN DEFINITIVA FUNCIONAL
+// src/middleware.ts - VERSIÓN CORREGIDA para manejar cookies de Cognito
 import { NextRequest, NextResponse } from 'next/server'
 
 interface DecodedToken {
@@ -45,6 +45,44 @@ function isTokenValid(token: DecodedToken): boolean {
   return isValid
 }
 
+function extractCognitoTokenFromCookies(cookieHeader: string): string | null {
+  console.log('🔍 [MIDDLEWARE] Searching for Cognito tokens in cookies...')
+  
+  // Parse cookies manually
+  const cookies = cookieHeader.split(';').reduce((acc, cookie) => {
+    const [key, value] = cookie.trim().split('=')
+    if (key && value) {
+      acc[key] = decodeURIComponent(value)
+    }
+    return acc
+  }, {} as Record<string, string>)
+
+  console.log('🔍 [MIDDLEWARE] Parsed cookies:', Object.keys(cookies))
+
+  // Buscar tokens de Cognito
+  for (const [cookieName, cookieValue] of Object.entries(cookies)) {
+    console.log('🔍 [MIDDLEWARE] Checking cookie:', cookieName)
+    
+    // Buscar idToken de Cognito primero (mejor opción)
+    if (cookieName.includes('CognitoIdentityServiceProvider') && cookieName.endsWith('.idToken')) {
+      console.log('🔑 [MIDDLEWARE] Found Cognito idToken:', cookieName)
+      console.log('🔑 [MIDDLEWARE] Token value length:', cookieValue.length)
+      return cookieValue
+    }
+  }
+
+  // Segundo intento: buscar accessToken si no hay idToken
+  for (const [cookieName, cookieValue] of Object.entries(cookies)) {
+    if (cookieName.includes('CognitoIdentityServiceProvider') && cookieName.endsWith('.accessToken')) {
+      console.log('🔑 [MIDDLEWARE] Found Cognito accessToken as fallback:', cookieName)
+      return cookieValue
+    }
+  }
+
+  console.log('❌ [MIDDLEWARE] No Cognito tokens found in cookies')
+  return null
+}
+
 function extractToken(request: NextRequest): { token: string | null, source: string } {
   console.log('🔍 [MIDDLEWARE] Extracting token from request...')
   
@@ -63,25 +101,39 @@ function extractToken(request: NextRequest): { token: string | null, source: str
     return { token: customHeader, source: 'custom-header' }
   }
   
-  // 3. Cookies usando request.cookies (método preferido)
+  // 3. X-Access-Token header (fallback)
+  const accessHeader = request.headers.get('x-access-token')
+  if (accessHeader) {
+    console.log('🔑 [MIDDLEWARE] Token found in X-Access-Token header')
+    return { token: accessHeader, source: 'access-header' }
+  }
+  
+  // 4. Cookies usando request.cookies API (nombres simples)
   const tokenCookie = request.cookies.get('token')?.value
   if (tokenCookie) {
-    console.log('🔑 [MIDDLEWARE] Token found in cookies API')
-    return { token: tokenCookie, source: 'cookies-api' }
+    console.log('🔑 [MIDDLEWARE] Token found in simple token cookie')
+    return { token: tokenCookie, source: 'simple-cookie' }
   }
 
   const idTokenCookie = request.cookies.get('idToken')?.value
   if (idTokenCookie) {
-    console.log('🔑 [MIDDLEWARE] idToken found in cookies API')
-    return { token: idTokenCookie, source: 'cookies-api' }
+    console.log('🔑 [MIDDLEWARE] Token found in simple idToken cookie')
+    return { token: idTokenCookie, source: 'simple-cookie' }
   }
 
-  // 4. FALLBACK CRÍTICO: Parse manual de cookies desde headers
+  // 5. NUEVO: Buscar cookies de Cognito
   const cookieHeader = request.headers.get('cookie')
   if (cookieHeader) {
-    console.log('🔍 [MIDDLEWARE] Parsing raw cookie header...')
+    console.log('🔍 [MIDDLEWARE] Parsing raw cookie header for Cognito tokens...')
+    console.log('🔍 [MIDDLEWARE] Raw cookie header:', cookieHeader.substring(0, 200) + '...')
     
-    // Parse cookies manually
+    const cognitoToken = extractCognitoTokenFromCookies(cookieHeader)
+    if (cognitoToken) {
+      console.log('🔑 [MIDDLEWARE] Token found in Cognito cookies')
+      return { token: cognitoToken, source: 'cognito-cookie' }
+    }
+
+    // Fallback: buscar cookies simples en header raw
     const cookies = cookieHeader.split(';').reduce((acc, cookie) => {
       const [key, value] = cookie.trim().split('=')
       if (key && value) {
@@ -89,6 +141,8 @@ function extractToken(request: NextRequest): { token: string | null, source: str
       }
       return acc
     }, {} as Record<string, string>)
+
+    console.log('🔍 [MIDDLEWARE] All parsed cookies:', Object.keys(cookies))
 
     if (cookies.token) {
       console.log('🔑 [MIDDLEWARE] Token found in raw cookie header')
@@ -125,9 +179,24 @@ export function middleware(request: NextRequest) {
     '/auth/confirm'
   ]
 
+  // APIs públicas que no requieren autenticación
+  const publicApiRoutes = [
+    '/api/auth/login',
+    '/api/auth/register',
+    '/api/auth/confirm',
+    '/api/auth/refresh',
+    '/api/auth/logout',
+    '/api/auth/registration-status',
+    '/api/auth/forgot-password',
+    '/api/auth/confirm-forgot-password',
+    '/api/auth/resend-code',
+    '/api/setup/admin'
+  ]
+
   const isPublicRoute = publicRoutes.includes(pathname) || pathname.startsWith('/auth/')
+  const isPublicApiRoute = publicApiRoutes.includes(pathname)
   
-  if (isPublicRoute) {
+  if (isPublicRoute || isPublicApiRoute) {
     console.log('✅ [MIDDLEWARE] Public route allowed:', pathname)
     return NextResponse.next()
   }
@@ -161,21 +230,23 @@ export function middleware(request: NextRequest) {
         request: { headers: requestHeaders }
       })
 
-      // Asegurar que las cookies estén en la response si vinieron de headers raw
-      if (source === 'raw-header') {
+      // NUEVO: Si el token viene de Cognito, establecer cookies simples para futuros requests
+      if (source === 'cognito-cookie') {
+        console.log('🍪 [MIDDLEWARE] Syncing Cognito token to simple cookies')
         response.cookies.set('token', token, { 
           httpOnly: false, 
           secure: process.env.NODE_ENV === 'production',
           sameSite: 'strict',
-          path: '/'
+          path: '/',
+          maxAge: 86400 // 24 horas
         })
         response.cookies.set('idToken', token, { 
           httpOnly: false, 
           secure: process.env.NODE_ENV === 'production',
           sameSite: 'strict',
-          path: '/'
+          path: '/',
+          maxAge: 86400
         })
-        console.log('🍪 [MIDDLEWARE] Refreshed cookies in response for page')
       }
 
       return response
@@ -244,21 +315,23 @@ export function middleware(request: NextRequest) {
     request: { headers: requestHeaders }
   })
 
-  // Sincronizar cookies en la response si es necesario
-  if (source === 'raw-header') {
+  // NUEVO: Sincronizar cookies simples si el token viene de Cognito
+  if (source === 'cognito-cookie') {
+    console.log('🍪 [MIDDLEWARE] Syncing Cognito token to simple cookies for API')
     response.cookies.set('token', token, { 
       httpOnly: false, 
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
-      path: '/'
+      path: '/',
+      maxAge: 86400
     })
     response.cookies.set('idToken', token, { 
       httpOnly: false, 
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
-      path: '/'
+      path: '/',
+      maxAge: 86400
     })
-    console.log('🍪 [MIDDLEWARE] Synchronized cookies for API request')
   }
 
   return response

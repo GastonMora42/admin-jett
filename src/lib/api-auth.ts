@@ -1,5 +1,5 @@
 // =====================================================
-// API AUTH UTILS - src/lib/api-auth.ts
+// API AUTH UTILS CORREGIDA - src/lib/api-auth.ts
 // =====================================================
 
 import { NextRequest } from 'next/server'
@@ -26,20 +26,64 @@ export async function getAuthenticatedUser(request: NextRequest): Promise<Authen
       return null
     }
 
-    // Buscar o crear el usuario en la base de datos
+    console.log('🔍 Looking for user:', { userId, userEmail, userRole })
+
+    // 1. Buscar primero por cognitoId
     let usuario = await prisma.usuario.findUnique({
       where: { cognitoId: userId }
     })
 
-    // Si no existe, crearlo (para casos donde el usuario existe en Cognito pero no en nuestra DB)
-    if (!usuario) {
-      console.log('📝 Creando usuario en DB desde Cognito:', userEmail)
+    if (usuario) {
+      console.log('✅ Usuario encontrado por cognitoId:', usuario.email)
       
-      // Extraer nombre y apellido del email si no los tenemos
-      const nameParts = userEmail.split('@')[0].split('.')
-      const nombre = nameParts[0] || 'Usuario'
-      const apellido = nameParts[1] || 'Nuevo'
+      // Actualizar fecha de último login
+      await prisma.usuario.update({
+        where: { id: usuario.id },
+        data: { fechaLogin: new Date() }
+      })
 
+      return {
+        id: usuario.id,
+        email: usuario.email,
+        rol: usuario.rol,
+        cognitoId: usuario.cognitoId
+      }
+    }
+
+    // 2. Si no existe por cognitoId, buscar por email
+    usuario = await prisma.usuario.findUnique({
+      where: { email: userEmail }
+    })
+
+    if (usuario) {
+      console.log('📝 Usuario encontrado por email, actualizando cognitoId:', userEmail)
+      
+      // Actualizar el cognitoId en el usuario existente
+      usuario = await prisma.usuario.update({
+        where: { id: usuario.id },
+        data: { 
+          cognitoId: userId,
+          fechaLogin: new Date() 
+        }
+      })
+
+      return {
+        id: usuario.id,
+        email: usuario.email,
+        rol: usuario.rol,
+        cognitoId: usuario.cognitoId
+      }
+    }
+
+    // 3. Si no existe en absoluto, crear nuevo usuario
+    console.log('📝 Creando nuevo usuario en DB:', userEmail)
+    
+    // Extraer nombre y apellido del email si no los tenemos
+    const nameParts = userEmail.split('@')[0].split('.')
+    const nombre = nameParts[0] || 'Usuario'
+    const apellido = nameParts[1] || 'Nuevo'
+
+    try {
       usuario = await prisma.usuario.create({
         data: {
           cognitoId: userId,
@@ -50,20 +94,47 @@ export async function getAuthenticatedUser(request: NextRequest): Promise<Authen
           estado: 'ACTIVO'
         }
       })
+
+      console.log('✅ Nuevo usuario creado:', usuario.email)
+
+      return {
+        id: usuario.id,
+        email: usuario.email,
+        rol: usuario.rol,
+        cognitoId: usuario.cognitoId
+      }
+    } catch (createError: any) {
+      // Si falla la creación, puede ser una condición de carrera
+      // Intentar buscar nuevamente
+      if (createError.code === 'P2002') {
+        console.log('⚠️ Race condition detected, retry finding user by email')
+        
+        usuario = await prisma.usuario.findUnique({
+          where: { email: userEmail }
+        })
+
+        if (usuario) {
+          // Actualizar cognitoId si el usuario fue creado por otro proceso
+          usuario = await prisma.usuario.update({
+            where: { id: usuario.id },
+            data: { 
+              cognitoId: userId,
+              fechaLogin: new Date() 
+            }
+          })
+
+          return {
+            id: usuario.id,
+            email: usuario.email,
+            rol: usuario.rol,
+            cognitoId: usuario.cognitoId
+          }
+        }
+      }
+      
+      throw createError
     }
 
-    // Actualizar fecha de último login
-    await prisma.usuario.update({
-      where: { id: usuario.id },
-      data: { fechaLogin: new Date() }
-    })
-
-    return {
-      id: usuario.id,
-      email: usuario.email,
-      rol: usuario.rol,
-      cognitoId: usuario.cognitoId
-    }
   } catch (error) {
     console.error('❌ Error getting authenticated user:', error)
     return null

@@ -1,4 +1,4 @@
-// lib/auth.ts - MEJORADO para sincronización perfecta con middleware
+// lib/auth.ts - VERSIÓN MEJORADA para sincronización perfecta con middleware
 interface AuthTokens {
   accessToken: string;
   idToken: string;
@@ -15,7 +15,7 @@ interface User {
 }
 
 export const authUtils = {
-  // Guardar tokens - MEJORADO para máxima compatibilidad
+  // MEJORADO: Guardar tokens en múltiples formatos para compatibilidad máxima
   setTokens: (tokens: AuthTokens) => {
     if (typeof window !== 'undefined') {
       try {
@@ -25,23 +25,44 @@ export const authUtils = {
         localStorage.setItem('refreshToken', tokens.refreshToken);
         console.log('💾 Tokens saved to localStorage');
         
-        // 2. CRÍTICO: Establecer cookies con configuración óptima
+        // 2. CRÍTICO: Establecer cookies simples que el middleware puede leer fácilmente
         const isProduction = window.location.protocol === 'https:';
         const cookieOptions = isProduction 
           ? '; path=/; secure; samesite=strict; max-age=86400' // 24 horas
           : '; path=/; samesite=strict; max-age=86400';
         
-        // Establecer AMBAS cookies que busca el middleware
+        // Cookies simples para el middleware
         document.cookie = `token=${tokens.idToken}${cookieOptions}`;
         document.cookie = `idToken=${tokens.idToken}${cookieOptions}`;
-        
-        // 3. NUEVO: También establecer accessToken como cookie separada
         document.cookie = `accessToken=${tokens.accessToken}${cookieOptions}`;
         document.cookie = `refreshToken=${tokens.refreshToken}${cookieOptions}`;
         
-        console.log('🍪 All tokens saved to cookies with options:', cookieOptions);
+        console.log('🍪 Simple tokens saved to cookies');
 
-        // 4. NUEVO: Verificación inmediata de que las cookies se establecieron
+        // 3. NUEVO: También establecer cookies de Cognito si vienen de AWS
+        // Esto mantiene compatibilidad con el sistema AWS Amplify si lo usas
+        if (tokens.idToken && tokens.idToken.includes('eyJ')) {
+          try {
+            const decoded = authUtils.decodeToken(tokens.idToken);
+            if (decoded && decoded.email) {
+              const userEmail = decoded.email;
+              const clientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID || '7tmctt10ht1q3tff359eii7jv0';
+              
+              // Formato de cookies de Cognito
+              const cognitoPrefix = `CognitoIdentityServiceProvider.${clientId}.${encodeURIComponent(userEmail)}`;
+              document.cookie = `${cognitoPrefix}.accessToken=${tokens.accessToken}${cookieOptions}`;
+              document.cookie = `${cognitoPrefix}.idToken=${tokens.idToken}${cookieOptions}`;
+              document.cookie = `${cognitoPrefix}.refreshToken=${tokens.refreshToken}${cookieOptions}`;
+              document.cookie = `CognitoIdentityServiceProvider.${clientId}.LastAuthUser=${encodeURIComponent(userEmail)}${cookieOptions}`;
+              
+              console.log('🍪 Cognito-style tokens saved for compatibility');
+            }
+          } catch (error) {
+            console.warn('⚠️ Could not set Cognito-style cookies:', error);
+          }
+        }
+
+        // 4. Verificación inmediata de que las cookies se establecieron
         setTimeout(() => {
           const testCookie = document.cookie.includes(`token=${tokens.idToken}`);
           console.log('✅ Cookie verification:', testCookie ? 'SUCCESS' : 'FAILED');
@@ -52,7 +73,7 @@ export const authUtils = {
               detail: { tokens, verified: true }
             }));
           }
-        }, 100); // Pequeña pausa para asegurar que las cookies se establecieron
+        }, 100);
 
       } catch (error) {
         console.error('❌ Error saving tokens:', error);
@@ -60,7 +81,7 @@ export const authUtils = {
     }
   },
 
-  // Obtener tokens - MEJORADO con fallbacks
+  // MEJORADO: Obtener tokens con múltiples fallbacks incluyendo Cognito
   getTokens: (): AuthTokens | null => {
     if (typeof window === 'undefined') {
       console.log('🖥️ Server-side, no tokens available');
@@ -78,8 +99,8 @@ export const authUtils = {
         return { accessToken, idToken, refreshToken };
       }
 
-      // Método 2: Fallback a cookies si localStorage falla
-      console.log('📱 localStorage empty, trying cookies...');
+      // Método 2: Cookies simples
+      console.log('📱 localStorage empty, trying simple cookies...');
       const cookies = document.cookie.split(';').reduce((acc, cookie) => {
         const [key, value] = cookie.trim().split('=');
         if (key && value) {
@@ -89,18 +110,26 @@ export const authUtils = {
       }, {} as Record<string, string>);
 
       if (cookies.idToken && cookies.accessToken && cookies.refreshToken) {
-        console.log('🍪 Tokens found in cookies, syncing to localStorage');
-        
-        // Sincronizar de vuelta a localStorage
-        localStorage.setItem('accessToken', cookies.accessToken);
-        localStorage.setItem('idToken', cookies.idToken);
-        localStorage.setItem('refreshToken', cookies.refreshToken);
-        
+        console.log('🍪 Tokens found in simple cookies');
         return {
           accessToken: cookies.accessToken,
           idToken: cookies.idToken,
           refreshToken: cookies.refreshToken
         };
+      }
+
+      // Método 3: NUEVO - Buscar cookies de Cognito
+      console.log('📱 Simple cookies empty, trying Cognito cookies...');
+      const cognitoTokens = authUtils.extractCognitoTokens(cookies);
+      if (cognitoTokens) {
+        console.log('🍪 Tokens found in Cognito cookies, syncing to localStorage');
+        
+        // Sincronizar de vuelta a localStorage
+        localStorage.setItem('accessToken', cognitoTokens.accessToken);
+        localStorage.setItem('idToken', cognitoTokens.idToken);
+        localStorage.setItem('refreshToken', cognitoTokens.refreshToken);
+        
+        return cognitoTokens;
       }
 
     } catch (error) {
@@ -111,7 +140,37 @@ export const authUtils = {
     return null;
   },
 
-  // Limpiar tokens - MEJORADO para limpieza completa
+  // NUEVO: Extraer tokens de cookies de Cognito
+  extractCognitoTokens: (cookies: Record<string, string>): AuthTokens | null => {
+    try {
+      let accessToken = '';
+      let idToken = '';
+      let refreshToken = '';
+
+      // Buscar cookies de Cognito
+      for (const [cookieName, cookieValue] of Object.entries(cookies)) {
+        if (cookieName.includes('CognitoIdentityServiceProvider') && cookieName.includes('.accessToken')) {
+          accessToken = cookieValue;
+        } else if (cookieName.includes('CognitoIdentityServiceProvider') && cookieName.includes('.idToken')) {
+          idToken = cookieValue;
+        } else if (cookieName.includes('CognitoIdentityServiceProvider') && cookieName.includes('.refreshToken')) {
+          refreshToken = cookieValue;
+        }
+      }
+
+      if (accessToken && idToken && refreshToken) {
+        console.log('🔍 Successfully extracted Cognito tokens');
+        return { accessToken, idToken, refreshToken };
+      }
+
+      return null;
+    } catch (error) {
+      console.error('❌ Error extracting Cognito tokens:', error);
+      return null;
+    }
+  },
+
+  // MEJORADO: Limpiar TODOS los tipos de cookies
   clearTokens: () => {
     if (typeof window !== 'undefined') {
       try {
@@ -120,28 +179,28 @@ export const authUtils = {
         localStorage.removeItem('idToken');
         localStorage.removeItem('refreshToken');
         
-        // 2. Limpiar TODAS las cookies relacionadas
-        const cookiesToClear = ['token', 'idToken', 'accessToken', 'refreshToken'];
+        // 2. Limpiar cookies simples
         const clearOptions = '; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+        const simpleCookies = ['token', 'idToken', 'accessToken', 'refreshToken'];
         
-        cookiesToClear.forEach(cookieName => {
+        simpleCookies.forEach(cookieName => {
           document.cookie = `${cookieName}=${clearOptions}`;
-          // También para subdominios si existe
-          if (window.location.hostname.includes('.')) {
-            const domain = window.location.hostname.split('.').slice(-2).join('.');
-            document.cookie = `${cookieName}=${clearOptions} domain=.${domain}`;
+        });
+
+        // 3. NUEVO: Limpiar cookies de Cognito
+        const allCookies = document.cookie.split(';').reduce((acc, cookie) => {
+          const [key] = cookie.trim().split('=');
+          if (key) acc.push(key);
+          return acc;
+        }, [] as string[]);
+
+        allCookies.forEach(cookieName => {
+          if (cookieName.includes('CognitoIdentityServiceProvider')) {
+            document.cookie = `${cookieName}=${clearOptions}`;
           }
         });
         
-        console.log('🗑️ All tokens cleared from localStorage and cookies');
-
-        // 3. Verificación de limpieza
-        setTimeout(() => {
-          const stillHasCookies = cookiesToClear.some(name => 
-            document.cookie.includes(`${name}=`)
-          );
-          console.log('🧹 Cookie cleanup verification:', stillHasCookies ? 'INCOMPLETE' : 'COMPLETE');
-        }, 100);
+        console.log('🗑️ All tokens cleared from localStorage and all cookie types');
 
         // 4. Disparar evento de limpieza
         window.dispatchEvent(new CustomEvent('auth-tokens-cleared'));
@@ -151,7 +210,7 @@ export const authUtils = {
     }
   },
 
-  // Verificar autenticación - MEJORADO con mejor validación
+  // Verificar autenticación - sin cambios, funciona bien
   isAuthenticated: (): boolean => {
     const tokens = authUtils.getTokens();
     if (!tokens) {
@@ -163,7 +222,7 @@ export const authUtils = {
       const tokenData = authUtils.decodeToken(tokens.idToken);
       if (!tokenData) {
         console.log('🔍 Not authenticated: invalid token');
-        authUtils.clearTokens(); // Limpiar tokens inválidos
+        authUtils.clearTokens();
         return false;
       }
 
@@ -246,7 +305,7 @@ export const authUtils = {
     return user;
   },
 
-  // Refrescar tokens - MEJORADO con mejor manejo de errores
+  // Refrescar tokens - sin cambios, funciona bien
   refreshTokens: async (): Promise<boolean> => {
     const tokens = authUtils.getTokens();
     if (!tokens?.refreshToken) {
@@ -278,7 +337,7 @@ export const authUtils = {
         // CRÍTICO: Actualizar tokens INMEDIATAMENTE
         authUtils.setTokens(newTokens);
         
-        // NUEVO: Pausa más larga para asegurar sincronización completa
+        // Pausa para asegurar sincronización completa
         await new Promise(resolve => setTimeout(resolve, 200));
         
         // Verificar que los tokens se guardaron correctamente
@@ -326,7 +385,7 @@ export const authUtils = {
     }
   },
 
-  // NUEVO: Método para forzar sincronización de cookies
+  // MEJORADO: Método para forzar sincronización de cookies
   forceCookieSync: () => {
     const tokens = authUtils.getTokens();
     if (tokens) {
@@ -337,7 +396,7 @@ export const authUtils = {
     return false;
   },
 
-  // Verificar y refrescar tokens - MEJORADO
+  // Verificar y refrescar tokens - sin cambios, funciona bien
   ensureValidTokens: async (): Promise<boolean> => {
     console.log('🔍 Ensuring valid tokens...');
     
