@@ -1,4 +1,3 @@
-
 // =====================================================
 // API EXPORTAR DATOS - src/app/api/exportar/route.ts
 // =====================================================
@@ -14,7 +13,7 @@ export async function GET(request: NextRequest) {
     const tipo = searchParams.get('tipo') // 'clientes', 'proyectos', 'pagos'
     const formato = searchParams.get('formato') || 'json' // 'json', 'csv'
 
-    let data: any[] = []
+    let data: Record<string, unknown>[] = []
 
     switch (tipo) {
       case 'clientes':
@@ -58,12 +57,13 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json(data)
-  } catch (error) {
+  } catch (err) {
+    console.error('Error al exportar datos:', err)
     return NextResponse.json({ error: 'Error al exportar datos' }, { status: 500 })
   }
 }
 
-function convertToCSV(data: any[], tipo: string): string {
+function convertToCSV(data: Record<string, unknown>[], tipo: string | null): string {
   if (data.length === 0) return ''
 
   let headers: string[] = []
@@ -73,41 +73,41 @@ function convertToCSV(data: any[], tipo: string): string {
     case 'clientes':
       headers = ['ID', 'Nombre', 'Email', 'Teléfono', 'Empresa', 'Estado', 'Fecha Registro', 'Total Proyectos']
       rows = data.map(cliente => [
-        cliente.id,
-        cliente.nombre,
-        cliente.email,
-        cliente.telefono || '',
-        cliente.empresa || '',
-        cliente.estado,
-        new Date(cliente.fechaRegistro).toLocaleDateString(),
-        cliente.proyectos?.length.toString() || '0'
+        String(cliente.id),
+        String(cliente.nombre),
+        String(cliente.email),
+        String(cliente.telefono || ''),
+        String(cliente.empresa || ''),
+        String(cliente.estado),
+        new Date(String(cliente.fechaRegistro)).toLocaleDateString(),
+        String((cliente.proyectos as unknown[] | undefined)?.length || '0')
       ])
       break
     case 'proyectos':
       headers = ['ID', 'Nombre', 'Cliente', 'Tipo', 'Monto Total', 'Estado Proyecto', 'Estado Pago', 'Fecha Inicio']
       rows = data.map(proyecto => [
-        proyecto.id,
-        proyecto.nombre,
-        proyecto.cliente?.nombre || '',
-        proyecto.tipo,
-        proyecto.montoTotal.toString(),
-        proyecto.estadoProyecto,
-        proyecto.estadoPago,
-        new Date(proyecto.fechaInicio).toLocaleDateString()
+        String(proyecto.id),
+        String(proyecto.nombre),
+        String((proyecto.cliente as { nombre?: string } | undefined)?.nombre || ''),
+        String(proyecto.tipo),
+        String(proyecto.montoTotal),
+        String(proyecto.estadoProyecto),
+        String(proyecto.estadoPago),
+        new Date(String(proyecto.fechaInicio)).toLocaleDateString()
       ])
       break
     case 'pagos':
       headers = ['ID', 'Proyecto', 'Cliente', 'Cuota', 'Monto', 'Fecha Vencimiento', 'Fecha Pago', 'Estado', 'Método']
       rows = data.map(pago => [
-        pago.id,
-        pago.proyecto?.nombre || '',
-        pago.proyecto?.cliente?.nombre || '',
-        pago.numeroCuota.toString(),
-        pago.montoCuota.toString(),
-        new Date(pago.fechaVencimiento).toLocaleDateString(),
-        pago.fechaPagoReal ? new Date(pago.fechaPagoReal).toLocaleDateString() : '',
-        pago.estadoPago,
-        pago.metodoPago || ''
+        String(pago.id),
+        String((pago.proyecto as { nombre?: string } | undefined)?.nombre || ''),
+        String((pago.proyecto as { cliente?: { nombre?: string } } | undefined)?.cliente?.nombre || ''),
+        String(pago.numeroCuota),
+        String(pago.montoCuota),
+        new Date(String(pago.fechaVencimiento)).toLocaleDateString(),
+        pago.fechaPagoReal ? new Date(String(pago.fechaPagoReal)).toLocaleDateString() : '',
+        String(pago.estadoPago),
+        String(pago.metodoPago || '')
       ])
       break
   }

@@ -1,3 +1,4 @@
+
 // =====================================================
 // API ESTADÍSTICAS - src/app/api/estadisticas/route.ts
 // =====================================================
@@ -93,7 +94,8 @@ export async function GET() {
       proyectosMasRentables,
       ingresosPorMes
     })
-  } catch (error) {
+  } catch (err) {
+    console.error('Error al obtener estadísticas:', err)
     return NextResponse.json({ error: 'Error al obtener estadísticas' }, { status: 500 })
   }
 }

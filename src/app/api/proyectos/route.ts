@@ -1,5 +1,6 @@
+
 // =====================================================
-// API PROYECTOS CORREGIDA - src/app/api/proyectos/route.ts
+// API PROYECTOS - src/app/api/proyectos/route.ts  
 // =====================================================
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -89,7 +90,7 @@ export async function POST(request: NextRequest) {
     })
 
     // Crear pagos automáticamente
-    await crearPagosAutomaticos(proyecto)
+    await crearPagosAutomaticos(proyecto as ProyectoData)
 
     return NextResponse.json(proyecto, { status: 201 })
   } catch (error) {
@@ -98,8 +99,16 @@ export async function POST(request: NextRequest) {
   }
 }
 
+interface ProyectoData {
+  id: string
+  montoTotal: number
+  cuotas: number
+  fechaInicio: Date
+  formaPago: string
+}
+
 // Función auxiliar para crear pagos
-async function crearPagosAutomaticos(proyecto: any) {
+async function crearPagosAutomaticos(proyecto: ProyectoData) {
   const { id, montoTotal, cuotas, fechaInicio, formaPago } = proyecto
   const montoPorCuota = montoTotal / cuotas
 

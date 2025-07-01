@@ -1,10 +1,11 @@
+
 // =====================================================
-// PÁGINA DE CLIENTES ACTUALIZADA - src/app/clientes/page.tsx
+// PÁGINA CLIENTES CORREGIDA - src/app/clientes/page.tsx
 // =====================================================
 
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
   Plus, 
@@ -18,14 +19,13 @@ import {
   Building,
   Users,
   Eye,
-  Star,
   AlertCircle
 } from 'lucide-react'
 import { FormularioCliente } from '@/components/FormularioCliente'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { EmptyState } from '@/components/EmptyState'
-import { useApi } from '@/lib/api-client' // ← Nuevo import
+import { useApi } from '@/lib/api-client'
 
 interface Cliente {
   id: string
@@ -54,14 +54,9 @@ export default function ClientesPage() {
   const [clienteToDelete, setClienteToDelete] = useState<Cliente | null>(null)
   const [selectedClientes, setSelectedClientes] = useState<string[]>([])
 
-  // ← Usar el nuevo hook de API
   const api = useApi()
 
-  useEffect(() => {
-    fetchClientes()
-  }, [])
-
-  const fetchClientes = async () => {
+  const fetchClientes = useCallback(async () => {
     try {
       const data = await api.get('/api/clientes')
       setClientes(Array.isArray(data) ? data : [])
@@ -69,7 +64,11 @@ export default function ClientesPage() {
       console.error('Error:', error)
       setClientes([])
     }
-  }
+  }, [api])
+
+  useEffect(() => {
+    fetchClientes()
+  }, [fetchClientes])
 
   const handleCreateCliente = async (clienteData: Partial<Cliente>) => {
     try {
@@ -120,11 +119,6 @@ export default function ClientesPage() {
     cliente.empresa?.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
-  const calcularTotalProyectos = (cliente: Cliente) => {
-    return cliente.proyectos?.reduce((sum, p) => sum + p.montoTotal, 0) || 0
-  }
-
-  // ← Mostrar loading del hook useApi
   if (api.loading && clientes.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -133,7 +127,6 @@ export default function ClientesPage() {
     )
   }
 
-  // ← Mostrar error del hook useApi
   if (api.error && clientes.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -281,7 +274,7 @@ export default function ClientesPage() {
   )
 }
 
-// Componente de tarjeta de cliente (sin cambios)
+// Componente de tarjeta de cliente
 interface ClienteCardProps {
   cliente: Cliente
   index: number

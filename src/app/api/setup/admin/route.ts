@@ -1,3 +1,4 @@
+
 // =====================================================
 // API SETUP ADMIN - src/app/api/setup/admin/route.ts
 // =====================================================
@@ -61,8 +62,8 @@ export async function POST(request: NextRequest) {
       }
     })
 
-  } catch (error) {
-    console.error('Error creating superadmin:', error)
+  } catch (err) {
+    console.error('Error creating superadmin:', err)
     return NextResponse.json({ 
       error: 'Error interno del servidor' 
     }, { status: 500 })
@@ -81,7 +82,8 @@ export async function GET() {
       userCount,
       hasAdmin: !!hasAdmin
     })
-  } catch (error) {
+  } catch (err) {
+    console.error('Error checking setup status:', err)
     return NextResponse.json({ 
       error: 'Error checking setup status' 
     }, { status: 500 })

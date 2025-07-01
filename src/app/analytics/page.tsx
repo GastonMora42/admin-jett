@@ -7,11 +7,8 @@
 import React, { useState } from 'react'
 import { motion } from 'framer-motion'
 import { 
-  BarChart3, 
-  PieChart, 
   TrendingUp, 
   Users, 
-  FolderOpen, 
   Clock,
   Target,
   Zap

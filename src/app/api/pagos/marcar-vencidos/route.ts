@@ -1,3 +1,4 @@
+
 // =====================================================
 // API MARCAR PAGOS VENCIDOS - src/app/api/pagos/marcar-vencidos/route.ts
 // =====================================================
@@ -25,8 +26,8 @@ export async function POST() {
     })
 
     return NextResponse.json({ message: 'Pagos vencidos actualizados' })
-  } catch (error) {
+  } catch (err) {
+    console.error('Error al marcar pagos vencidos:', err)
     return NextResponse.json({ error: 'Error al marcar pagos vencidos' }, { status: 500 })
   }
 }
-

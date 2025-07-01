@@ -101,7 +101,8 @@ export async function GET() {
     ]
 
     return NextResponse.json(notificaciones)
-  } catch (error) {
+  } catch (err) {
+    console.error('Error al obtener notificaciones:', err)
     return NextResponse.json({ error: 'Error al obtener notificaciones' }, { status: 500 })
   }
 }

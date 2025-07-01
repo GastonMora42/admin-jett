@@ -417,10 +417,17 @@ export default function PagosPage() {
         isOpen={showRegistrarPago}
         onClose={() => {
           setShowRegistrarPago(false)
-          setPagoToRegister(undefined)
+          setPagoToRegister(null)
         }}
         onSubmit={async (data) => {
-          await handleRegistrarPago(data)
+          // Nos aseguramos de que el objeto 'proyecto' tenga la propiedad 'id' requerida
+          const dataConProyectoId = {
+            ...data,
+            proyecto: data.proyecto && 'id' in data.proyecto
+              ? data.proyecto
+              : undefined
+          }
+          await handleRegistrarPago(dataConProyectoId)
         }}
         pago={pagoToRegister}
       />

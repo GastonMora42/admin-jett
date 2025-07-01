@@ -28,7 +28,8 @@ export async function GET(
     }
     
     return NextResponse.json(pago)
-  } catch (error) {
+  } catch (err) {
+    console.error('Error al obtener pago:', err)
     return NextResponse.json({ error: 'Error al obtener pago' }, { status: 500 })
   }
 }
@@ -54,7 +55,8 @@ export async function PUT(
     await actualizarEstadoProyecto(pago.proyectoId)
 
     return NextResponse.json(pago)
-  } catch (error) {
+  } catch (err) {
+    console.error('Error al actualizar pago:', err)
     return NextResponse.json({ error: 'Error al actualizar pago' }, { status: 500 })
   }
 }
@@ -76,7 +78,6 @@ async function actualizarEstadoProyecto(proyectoId: string) {
 
   await prisma.proyecto.update({
     where: { id: proyectoId },
-    data: { estadoPago: estadoPago as any }
+    data: { estadoPago: estadoPago as 'PENDIENTE' | 'PAGADO' | 'VENCIDO' | 'PARCIAL' }
   })
 }
-

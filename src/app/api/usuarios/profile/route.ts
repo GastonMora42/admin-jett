@@ -1,3 +1,4 @@
+
 // =====================================================
 // API PERFIL USUARIO - src/app/api/usuarios/profile/route.ts
 // =====================================================
@@ -52,7 +53,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const data = await request.json()
-    const { nombre, apellido, telefono, bio, timezone, idioma, notificaciones } = data
+    const { nombre, apellido } = data
 
     // Actualizar en la base de datos
     const usuario = await prisma.usuario.update({

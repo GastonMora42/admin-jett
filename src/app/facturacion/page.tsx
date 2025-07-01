@@ -1,10 +1,11 @@
+
 // =====================================================
 // PÁGINA FACTURACIÓN - src/app/facturacion/page.tsx
 // =====================================================
 
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import { motion } from 'framer-motion'
 import { 
   DollarSign, 
@@ -12,14 +13,12 @@ import {
   Calendar, 
   TrendingUp, 
   TrendingDown,
-  FileText,
-  Filter,
-  Search
+  FileText
 } from 'lucide-react'
 
 export default function FacturacionPage() {
   const [periodo, setPeriodo] = useState('este_mes')
-  const [facturacion, setFacturacion] = useState({
+  const [facturacion] = useState({
     totalMes: 45000,
     totalAnterior: 38000,
     pendiente: 12000,

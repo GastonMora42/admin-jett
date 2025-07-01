@@ -11,7 +11,6 @@ import {
   Users, 
   Plus, 
   Search, 
-  Filter, 
   MoreVertical,
   Edit,
   Trash2,
@@ -74,7 +73,7 @@ export default function AdminUsuariosPage() {
     }
   }
 
-  const handleCreateUsuario = async (usuarioData: any) => {
+  const handleCreateUsuario = async (usuarioData: Record<string, unknown>) => {
     try {
       const response = await fetch('/api/usuarios', {
         method: 'POST',
@@ -83,8 +82,8 @@ export default function AdminUsuariosPage() {
       })
       
       if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.message || 'Error al crear usuario')
+        const errorData = await response.json()
+        throw new Error(errorData.message || 'Error al crear usuario')
       }
       
       await fetchUsuarios()
@@ -95,7 +94,7 @@ export default function AdminUsuariosPage() {
     }
   }
 
-  const handleEditUsuario = async (usuarioData: any) => {
+  const handleEditUsuario = async (usuarioData: Record<string, unknown>) => {
     if (!editingUsuario) return
     
     try {
@@ -106,8 +105,8 @@ export default function AdminUsuariosPage() {
       })
       
       if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.message || 'Error al actualizar usuario')
+        const errorData = await response.json()
+        throw new Error(errorData.message || 'Error al actualizar usuario')
       }
       
       await fetchUsuarios()
@@ -132,8 +131,8 @@ export default function AdminUsuariosPage() {
       })
       
       if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.message || 'Error al eliminar usuario')
+        const errorData = await response.json()
+        throw new Error(errorData.message || 'Error al eliminar usuario')
       }
       
       await fetchUsuarios()
