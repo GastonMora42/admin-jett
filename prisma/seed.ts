@@ -138,7 +138,7 @@ async function main() {
       fechaInicio: new Date('2024-02-01'),
       fechaEntrega: new Date('2024-03-31'),
       estadoProyecto: 'COMPLETADO',
-      estadoPago: 'COMPLETO',
+      estadoPago: 'PAGADO',
       clienteId: clientes[1].id,
       creadoPor: salesUser.id,
     }

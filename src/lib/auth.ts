@@ -1,4 +1,4 @@
-// lib/auth.ts - CORREGIDO COMPLETAMENTE
+// lib/auth.ts - MEJORADO para sincronización perfecta con middleware
 interface AuthTokens {
   accessToken: string;
   idToken: string;
@@ -15,37 +15,52 @@ interface User {
 }
 
 export const authUtils = {
-  // Guardar tokens - CORREGIDO para mejor sincronización con middleware
+  // Guardar tokens - MEJORADO para máxima compatibilidad
   setTokens: (tokens: AuthTokens) => {
     if (typeof window !== 'undefined') {
       try {
-        // Guardar en localStorage
+        // 1. Guardar en localStorage (backup principal)
         localStorage.setItem('accessToken', tokens.accessToken);
         localStorage.setItem('idToken', tokens.idToken);
         localStorage.setItem('refreshToken', tokens.refreshToken);
         console.log('💾 Tokens saved to localStorage');
         
-        // CRÍTICO: Guardar en AMBAS cookies que busca el middleware
-        // Usar configuración que funcione tanto en HTTP (dev) como HTTPS (prod)
-        const cookieOptions = process.env.NODE_ENV === 'production' 
-          ? '; path=/; secure; samesite=strict'
-          : '; path=/; samesite=strict';
+        // 2. CRÍTICO: Establecer cookies con configuración óptima
+        const isProduction = window.location.protocol === 'https:';
+        const cookieOptions = isProduction 
+          ? '; path=/; secure; samesite=strict; max-age=86400' // 24 horas
+          : '; path=/; samesite=strict; max-age=86400';
         
+        // Establecer AMBAS cookies que busca el middleware
         document.cookie = `token=${tokens.idToken}${cookieOptions}`;
         document.cookie = `idToken=${tokens.idToken}${cookieOptions}`;
-        console.log('🍪 Tokens saved to cookies for middleware');
+        
+        // 3. NUEVO: También establecer accessToken como cookie separada
+        document.cookie = `accessToken=${tokens.accessToken}${cookieOptions}`;
+        document.cookie = `refreshToken=${tokens.refreshToken}${cookieOptions}`;
+        
+        console.log('🍪 All tokens saved to cookies with options:', cookieOptions);
 
-        // Disparar evento para notificar que los tokens fueron actualizados
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('auth-tokens-updated'));
-        }
+        // 4. NUEVO: Verificación inmediata de que las cookies se establecieron
+        setTimeout(() => {
+          const testCookie = document.cookie.includes(`token=${tokens.idToken}`);
+          console.log('✅ Cookie verification:', testCookie ? 'SUCCESS' : 'FAILED');
+          
+          if (testCookie) {
+            // Disparar evento para notificar que los tokens fueron actualizados
+            window.dispatchEvent(new CustomEvent('auth-tokens-updated', {
+              detail: { tokens, verified: true }
+            }));
+          }
+        }, 100); // Pequeña pausa para asegurar que las cookies se establecieron
+
       } catch (error) {
         console.error('❌ Error saving tokens:', error);
       }
     }
   },
 
-  // Obtener tokens
+  // Obtener tokens - MEJORADO con fallbacks
   getTokens: (): AuthTokens | null => {
     if (typeof window === 'undefined') {
       console.log('🖥️ Server-side, no tokens available');
@@ -53,6 +68,7 @@ export const authUtils = {
     }
     
     try {
+      // Método 1: localStorage (principal)
       const accessToken = localStorage.getItem('accessToken');
       const idToken = localStorage.getItem('idToken');
       const refreshToken = localStorage.getItem('refreshToken');
@@ -61,30 +77,73 @@ export const authUtils = {
         console.log('📱 Tokens found in localStorage');
         return { accessToken, idToken, refreshToken };
       }
+
+      // Método 2: Fallback a cookies si localStorage falla
+      console.log('📱 localStorage empty, trying cookies...');
+      const cookies = document.cookie.split(';').reduce((acc, cookie) => {
+        const [key, value] = cookie.trim().split('=');
+        if (key && value) {
+          acc[key] = decodeURIComponent(value);
+        }
+        return acc;
+      }, {} as Record<string, string>);
+
+      if (cookies.idToken && cookies.accessToken && cookies.refreshToken) {
+        console.log('🍪 Tokens found in cookies, syncing to localStorage');
+        
+        // Sincronizar de vuelta a localStorage
+        localStorage.setItem('accessToken', cookies.accessToken);
+        localStorage.setItem('idToken', cookies.idToken);
+        localStorage.setItem('refreshToken', cookies.refreshToken);
+        
+        return {
+          accessToken: cookies.accessToken,
+          idToken: cookies.idToken,
+          refreshToken: cookies.refreshToken
+        };
+      }
+
     } catch (error) {
       console.error('❌ Error reading tokens:', error);
     }
     
-    console.log('📭 No tokens found');
+    console.log('📭 No tokens found anywhere');
     return null;
   },
 
-  // Limpiar tokens - MEJORADO
+  // Limpiar tokens - MEJORADO para limpieza completa
   clearTokens: () => {
     if (typeof window !== 'undefined') {
       try {
-        // Limpiar localStorage
+        // 1. Limpiar localStorage
         localStorage.removeItem('accessToken');
         localStorage.removeItem('idToken');
         localStorage.removeItem('refreshToken');
         
-        // Limpiar AMBAS cookies
-        document.cookie = 'token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;';
-        document.cookie = 'idToken=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+        // 2. Limpiar TODAS las cookies relacionadas
+        const cookiesToClear = ['token', 'idToken', 'accessToken', 'refreshToken'];
+        const clearOptions = '; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;';
         
-        console.log('🗑️ Tokens cleared from localStorage and cookies');
+        cookiesToClear.forEach(cookieName => {
+          document.cookie = `${cookieName}=${clearOptions}`;
+          // También para subdominios si existe
+          if (window.location.hostname.includes('.')) {
+            const domain = window.location.hostname.split('.').slice(-2).join('.');
+            document.cookie = `${cookieName}=${clearOptions} domain=.${domain}`;
+          }
+        });
+        
+        console.log('🗑️ All tokens cleared from localStorage and cookies');
 
-        // Disparar evento para notificar que los tokens fueron eliminados
+        // 3. Verificación de limpieza
+        setTimeout(() => {
+          const stillHasCookies = cookiesToClear.some(name => 
+            document.cookie.includes(`${name}=`)
+          );
+          console.log('🧹 Cookie cleanup verification:', stillHasCookies ? 'INCOMPLETE' : 'COMPLETE');
+        }, 100);
+
+        // 4. Disparar evento de limpieza
         window.dispatchEvent(new CustomEvent('auth-tokens-cleared'));
       } catch (error) {
         console.error('❌ Error clearing tokens:', error);
@@ -92,7 +151,7 @@ export const authUtils = {
     }
   },
 
-  // Verificar si está autenticado - MEJORADO
+  // Verificar autenticación - MEJORADO con mejor validación
   isAuthenticated: (): boolean => {
     const tokens = authUtils.getTokens();
     if (!tokens) {
@@ -100,11 +159,11 @@ export const authUtils = {
       return false;
     }
 
-    // Verificar si el token no ha expirado
     try {
       const tokenData = authUtils.decodeToken(tokens.idToken);
       if (!tokenData) {
         console.log('🔍 Not authenticated: invalid token');
+        authUtils.clearTokens(); // Limpiar tokens inválidos
         return false;
       }
 
@@ -121,7 +180,7 @@ export const authUtils = {
       });
       
       if (!isValid) {
-        console.log('⏰ Token expired or expiring soon');
+        console.log('⏰ Token expired or expiring soon, cleaning up');
         authUtils.clearTokens();
       }
       
@@ -133,7 +192,7 @@ export const authUtils = {
     }
   },
 
-  // Decodificar JWT
+  // Decodificar JWT - sin cambios, funciona bien
   decodeToken: (token: string) => {
     try {
       const base64Url = token.split('.')[1];
@@ -159,7 +218,7 @@ export const authUtils = {
     }
   },
 
-  // Obtener usuario actual
+  // Obtener usuario actual - sin cambios, funciona bien
   getCurrentUser: (): User | null => {
     const tokens = authUtils.getTokens();
     if (!tokens) {
@@ -187,7 +246,7 @@ export const authUtils = {
     return user;
   },
 
-  // Refrescar tokens - CORREGIDO para mejor sincronización
+  // Refrescar tokens - MEJORADO con mejor manejo de errores
   refreshTokens: async (): Promise<boolean> => {
     const tokens = authUtils.getTokens();
     if (!tokens?.refreshToken) {
@@ -219,11 +278,15 @@ export const authUtils = {
         // CRÍTICO: Actualizar tokens INMEDIATAMENTE
         authUtils.setTokens(newTokens);
         
-        // Pequeña pausa para asegurar que las cookies se establezcan
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // NUEVO: Pausa más larga para asegurar sincronización completa
+        await new Promise(resolve => setTimeout(resolve, 200));
         
-        console.log('✅ Tokens refreshed and synchronized successfully');
-        return true;
+        // Verificar que los tokens se guardaron correctamente
+        const verifyTokens = authUtils.getTokens();
+        const success = verifyTokens?.idToken === newTokens.idToken;
+        
+        console.log('✅ Tokens refreshed and verified:', success);
+        return success;
       } else {
         const errorData = await response.json();
         console.log('❌ Token refresh failed:', response.status, errorData.error);
@@ -241,7 +304,7 @@ export const authUtils = {
     }
   },
 
-  // Logout completo
+  // Logout completo - sin cambios, funciona bien
   logout: async () => {
     console.log('🚪 Starting logout process...');
     
@@ -263,6 +326,17 @@ export const authUtils = {
     }
   },
 
+  // NUEVO: Método para forzar sincronización de cookies
+  forceCookieSync: () => {
+    const tokens = authUtils.getTokens();
+    if (tokens) {
+      console.log('🔄 Forcing cookie synchronization...');
+      authUtils.setTokens(tokens);
+      return true;
+    }
+    return false;
+  },
+
   // Verificar y refrescar tokens - MEJORADO
   ensureValidTokens: async (): Promise<boolean> => {
     console.log('🔍 Ensuring valid tokens...');
@@ -273,7 +347,6 @@ export const authUtils = {
       return false;
     }
 
-    // Verificar si los tokens son válidos
     const tokenData = authUtils.decodeToken(tokens.idToken);
     if (!tokenData) {
       console.log('❌ Invalid token format');
@@ -295,17 +368,19 @@ export const authUtils = {
       console.log('⏰ Token expires soon, preemptive refresh...');
       const refreshResult = await authUtils.refreshTokens();
       
-      // Si el refresh falla, pero el token aún es válido, continuar
       if (!refreshResult && timeUntilExpiration > 0) {
         console.log('⚠️ Refresh failed but token still valid, continuing...');
+        // Forzar sincronización de cookies como fallback
+        authUtils.forceCookieSync();
         return true;
       }
       
       return refreshResult;
     }
 
-    // Token válido
-    console.log('✅ Tokens are valid');
+    // Token válido, pero asegurar que las cookies estén sincronizadas
+    authUtils.forceCookieSync();
+    console.log('✅ Tokens are valid and synchronized');
     return true;
   }
 };

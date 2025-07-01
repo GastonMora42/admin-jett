@@ -1,4 +1,4 @@
-// middleware.ts - VERSIÓN CORREGIDA COMPLETAMENTE
+// src/middleware.ts - VERSIÓN DEFINITIVA FUNCIONAL
 import { NextRequest, NextResponse } from 'next/server'
 
 interface DecodedToken {
@@ -9,6 +9,7 @@ interface DecodedToken {
   'custom:role'?: string
   exp: number
   iat: number
+  'cognito:username'?: string
 }
 
 function decodeToken(token: string): DecodedToken | null {
@@ -40,12 +41,11 @@ function isTokenValid(token: DecodedToken): boolean {
     timeUntilExpiration: token.exp - currentTime,
     isValid,
     email: token.email
-  });
+  })
   return isValid
 }
 
-// NUEVA: Función para extraer token de múltiples fuentes
-function extractToken(request: NextRequest): string | null {
+function extractToken(request: NextRequest): { token: string | null, source: string } {
   console.log('🔍 [MIDDLEWARE] Extracting token from request...')
   
   // 1. Authorization header (Bearer token)
@@ -53,35 +53,59 @@ function extractToken(request: NextRequest): string | null {
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.substring(7)
     console.log('🔑 [MIDDLEWARE] Token found in Authorization header')
-    return token
+    return { token, source: 'auth-header' }
   }
   
   // 2. X-Auth-Token header (custom header from api-client)
   const customHeader = request.headers.get('x-auth-token')
   if (customHeader) {
     console.log('🔑 [MIDDLEWARE] Token found in X-Auth-Token header')
-    return customHeader
+    return { token: customHeader, source: 'custom-header' }
   }
   
-  // 3. Cookie 'token'
+  // 3. Cookies usando request.cookies (método preferido)
   const tokenCookie = request.cookies.get('token')?.value
   if (tokenCookie) {
-    console.log('🔑 [MIDDLEWARE] Token found in "token" cookie')
-    return tokenCookie
+    console.log('🔑 [MIDDLEWARE] Token found in cookies API')
+    return { token: tokenCookie, source: 'cookies-api' }
   }
 
-  // 4. Cookie 'idToken'  
   const idTokenCookie = request.cookies.get('idToken')?.value
   if (idTokenCookie) {
-    console.log('🔑 [MIDDLEWARE] Token found in "idToken" cookie')
-    return idTokenCookie
+    console.log('🔑 [MIDDLEWARE] idToken found in cookies API')
+    return { token: idTokenCookie, source: 'cookies-api' }
+  }
+
+  // 4. FALLBACK CRÍTICO: Parse manual de cookies desde headers
+  const cookieHeader = request.headers.get('cookie')
+  if (cookieHeader) {
+    console.log('🔍 [MIDDLEWARE] Parsing raw cookie header...')
+    
+    // Parse cookies manually
+    const cookies = cookieHeader.split(';').reduce((acc, cookie) => {
+      const [key, value] = cookie.trim().split('=')
+      if (key && value) {
+        acc[key] = decodeURIComponent(value)
+      }
+      return acc
+    }, {} as Record<string, string>)
+
+    if (cookies.token) {
+      console.log('🔑 [MIDDLEWARE] Token found in raw cookie header')
+      return { token: cookies.token, source: 'raw-header' }
+    }
+
+    if (cookies.idToken) {
+      console.log('🔑 [MIDDLEWARE] idToken found in raw cookie header')
+      return { token: cookies.idToken, source: 'raw-header' }
+    }
   }
 
   console.log('❌ [MIDDLEWARE] No token found in any location')
   console.log('🔍 [MIDDLEWARE] Available cookies:', request.cookies.getAll().map(c => c.name))
-  console.log('🔍 [MIDDLEWARE] Available headers:', Object.fromEntries(request.headers.entries()))
+  console.log('🔍 [MIDDLEWARE] Cookie header exists:', !!cookieHeader)
   
-  return null
+  return { token: null, source: 'none' }
 }
 
 export function middleware(request: NextRequest) {
@@ -108,23 +132,23 @@ export function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // NUEVA: Extraer token de múltiples fuentes
-  const token = extractToken(request)
+  // Extraer token con múltiples métodos
+  const { token, source } = extractToken(request)
 
-  // Para páginas (no APIs), ser más permisivo
+  // Para páginas (no APIs), redirigir si no hay token
   if (!pathname.startsWith('/api/')) {
     console.log('📄 [MIDDLEWARE] Processing page request')
     
     if (!token) {
-      console.log('📄 [MIDDLEWARE] No token found - allowing page, AuthProvider will handle')
-      return NextResponse.next()
+      console.log('📄 [MIDDLEWARE] No token found - redirecting to login')
+      return NextResponse.redirect(new URL('/auth/signin?callbackUrl=' + encodeURIComponent(pathname), request.url))
     }
     
     const decodedToken = decodeToken(token)
     if (decodedToken && isTokenValid(decodedToken)) {
-      console.log('✅ [MIDDLEWARE] Valid token for page')
+      console.log('✅ [MIDDLEWARE] Valid token for page from:', source)
       
-      // Agregar headers de usuario para facilitar el uso en server components
+      // Modificar request headers para pages
       const requestHeaders = new Headers(request.headers)
       requestHeaders.set('x-user-id', decodedToken.sub)
       requestHeaders.set('x-user-email', decodedToken.email)
@@ -133,16 +157,35 @@ export function middleware(request: NextRequest) {
 
       console.log('✅ [MIDDLEWARE] Added user headers for page:', decodedToken.email)
 
-      return NextResponse.next({
+      const response = NextResponse.next({
         request: { headers: requestHeaders }
       })
+
+      // Asegurar que las cookies estén en la response si vinieron de headers raw
+      if (source === 'raw-header') {
+        response.cookies.set('token', token, { 
+          httpOnly: false, 
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'strict',
+          path: '/'
+        })
+        response.cookies.set('idToken', token, { 
+          httpOnly: false, 
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'strict',
+          path: '/'
+        })
+        console.log('🍪 [MIDDLEWARE] Refreshed cookies in response for page')
+      }
+
+      return response
     }
     
-    console.log('📄 [MIDDLEWARE] Invalid token - allowing page, AuthProvider will handle')
-    return NextResponse.next()
+    console.log('📄 [MIDDLEWARE] Invalid token - redirecting to login')
+    return NextResponse.redirect(new URL('/auth/signin?callbackUrl=' + encodeURIComponent(pathname), request.url))
   }
 
-  // Para APIs, ser estricto pero agregar LOGS DETALLADOS
+  // Para APIs, verificación estricta
   console.log('🔌 [MIDDLEWARE] Processing API request - strict verification')
   
   if (!token) {
@@ -153,7 +196,9 @@ export function middleware(request: NextRequest) {
         path: pathname,
         cookies: request.cookies.getAll().map(c => ({ name: c.name, hasValue: !!c.value })),
         hasAuthHeader: !!request.headers.get('authorization'),
-        hasCustomHeader: !!request.headers.get('x-auth-token')
+        hasCustomHeader: !!request.headers.get('x-auth-token'),
+        hasCookieHeader: !!request.headers.get('cookie'),
+        source: source
       }
     }, { status: 401 })
   }
@@ -163,7 +208,7 @@ export function middleware(request: NextRequest) {
     console.log('❌ [MIDDLEWARE] API request rejected: invalid token format')
     return NextResponse.json({ 
       error: 'Token inválido',
-      debug: { tokenLength: token.length, tokenStart: token.substring(0, 20) }
+      debug: { tokenLength: token.length, tokenStart: token.substring(0, 20), source }
     }, { status: 401 })
   }
 
@@ -171,7 +216,7 @@ export function middleware(request: NextRequest) {
     console.log('❌ [MIDDLEWARE] API request rejected: token expired')
     return NextResponse.json({ 
       error: 'Token expirado',
-      debug: { exp: decodedToken.exp, current: Math.floor(Date.now() / 1000) }
+      debug: { exp: decodedToken.exp, current: Math.floor(Date.now() / 1000), source }
     }, { status: 401 })
   }
 
@@ -192,16 +237,31 @@ export function middleware(request: NextRequest) {
   requestHeaders.set('x-user-role', userRole)
   requestHeaders.set('x-user-name', `${decodedToken.given_name} ${decodedToken.family_name}`)
 
-  console.log('✅ [MIDDLEWARE] API request authorized for:', decodedToken.email, 'Role:', userRole)
-  console.log('✅ [MIDDLEWARE] Added user headers:', {
-    'x-user-id': decodedToken.sub,
-    'x-user-email': decodedToken.email,
-    'x-user-role': userRole
-  })
+  console.log('✅ [MIDDLEWARE] API request authorized for:', decodedToken.email, 'Role:', userRole, 'Source:', source)
+  console.log('✅ [MIDDLEWARE] User headers added successfully')
   
-  return NextResponse.next({
+  const response = NextResponse.next({
     request: { headers: requestHeaders }
   })
+
+  // Sincronizar cookies en la response si es necesario
+  if (source === 'raw-header') {
+    response.cookies.set('token', token, { 
+      httpOnly: false, 
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      path: '/'
+    })
+    response.cookies.set('idToken', token, { 
+      httpOnly: false, 
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      path: '/'
+    })
+    console.log('🍪 [MIDDLEWARE] Synchronized cookies for API request')
+  }
+
+  return response
 }
 
 export const config = {

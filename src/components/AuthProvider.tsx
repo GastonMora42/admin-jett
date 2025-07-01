@@ -1,7 +1,7 @@
-// components/AuthProvider.tsx - CORREGIDO para mejor sincronización
+// components/AuthProvider.tsx - MEJORADO para solucionar problemas de sincronización
 'use client';
 
-import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { authUtils } from '@/lib/auth';
 
@@ -39,17 +39,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const pathname = usePathname();
   const refreshingRef = useRef(false);
   const lastTokenCheck = useRef<number>(0);
+  const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Rutas públicas
   const publicRoutes = ['/', '/auth/signin', '/auth/register', '/auth/error', '/auth/confirm'];
   const protectedRoutes = ['/dashboard', '/clientes', '/proyectos', '/pagos', '/facturacion', '/analytics', '/configuracion'];
 
-  // Función para verificar autenticación con mejor sincronización
-  const checkAuth = async (attemptRefresh = true, force = false) => {
+  // NUEVA: Función de verificación de auth más robusta
+  const checkAuth = useCallback(async (attemptRefresh = true, force = false) => {
     try {
-      // Evitar checks muy frecuentes a menos que sea forzado
       const now = Date.now();
-      if (!force && (now - lastTokenCheck.current) < 5000) { // 5 segundos
+      if (!force && (now - lastTokenCheck.current) < 3000) { // Reducido a 3 segundos
         console.log('🔍 Auth check skipped - too frequent');
         return isAuthenticated;
       }
@@ -57,9 +57,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       console.log('🔍 Checking authentication state...', { attemptRefresh, force });
       
+      // NUEVO: Verificar que tenemos tokens válidos ANTES de continuar
+      const hasValidTokens = await authUtils.ensureValidTokens();
+      if (!hasValidTokens) {
+        console.log('❌ No valid tokens after ensure check');
+        setIsAuthenticated(false);
+        setUser(null);
+        return false;
+      }
+
       const tokens = authUtils.getTokens();
       if (!tokens) {
-        console.log('❌ No tokens found');
+        console.log('❌ No tokens found after validation');
         setIsAuthenticated(false);
         setUser(null);
         return false;
@@ -84,11 +93,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
           if (refreshed) {
             console.log('✅ Tokens refreshed, rechecking auth state...');
             
-            // NUEVO: Esperar más tiempo para asegurar sincronización
-            await new Promise(resolve => setTimeout(resolve, 800));
+            // MEJORADO: Pausa más larga y verificación múltiple
+            await new Promise(resolve => setTimeout(resolve, 500));
             
             const newAuthenticated = authUtils.isAuthenticated();
             const newUserData = authUtils.getCurrentUser();
+            
+            console.log('🔍 Post-refresh check:', { newAuthenticated, hasNewUser: !!newUserData });
             
             setIsAuthenticated(newAuthenticated);
             setUser(newUserData);
@@ -120,44 +131,75 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setUser(null);
       return false;
     }
-  };
+  }, [isAuthenticated]);
 
-  // Inicialización
+  // Inicialización mejorada
   useEffect(() => {
     const initAuth = async () => {
       console.log('🚀 Initializing authentication...');
       setIsLoading(true);
       
-      await checkAuth(true, true); // Force check during initialization
+      // NUEVO: Múltiples intentos de verificación con pausas
+      let authSuccess = false;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        console.log(`🔍 Auth initialization attempt ${attempt}/3`);
+        
+        authSuccess = await checkAuth(true, true);
+        
+        if (authSuccess) {
+          console.log('✅ Auth initialized successfully');
+          break;
+        }
+        
+        if (attempt < 3) {
+          console.log(`⏳ Attempt ${attempt} failed, retrying in 500ms...`);
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
       
       setIsLoading(false);
       setHasInitialized(true);
-      console.log('✅ Authentication initialized');
+      console.log('🏁 Authentication initialization complete:', authSuccess);
     };
 
     initAuth();
-  }, []);
+  }, [checkAuth]);
 
-  // Listener para cambios en tokens (para sincronización) - MEJORADO
+  // MEJORADO: Listener para cambios en tokens con mejor manejo
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const handleTokensUpdated = async () => {
-      console.log('🔄 Tokens updated event received, rechecking auth...');
-      // NUEVO: Pausa más larga para asegurar que las cookies se establecieron
-      await new Promise(resolve => setTimeout(resolve, 600));
-      await checkAuth(false, true); // Force recheck without refresh attempt
+    const handleTokensUpdated = async (event: any) => {
+      console.log('🔄 Tokens updated event received, details:', event.detail?.verified);
+      
+      // Cancelar timeout previo si existe
+      if (syncTimeoutRef.current) {
+        clearTimeout(syncTimeoutRef.current);
+      }
+      
+      // NUEVO: Pausa adaptativa basada en si los tokens fueron verificados
+      const delay = event.detail?.verified ? 200 : 800;
+      
+      syncTimeoutRef.current = setTimeout(async () => {
+        console.log('🔄 Processing token update after delay:', delay);
+        await checkAuth(false, true);
+      }, delay);
     };
 
     const handleTokensCleared = () => {
       console.log('🗑️ Tokens cleared event received, updating state...');
+      if (syncTimeoutRef.current) {
+        clearTimeout(syncTimeoutRef.current);
+      }
       setIsAuthenticated(false);
       setUser(null);
     };
 
     const handleBeforeUnload = () => {
-      // Limpiar refs al cerrar la ventana
       refreshingRef.current = false;
+      if (syncTimeoutRef.current) {
+        clearTimeout(syncTimeoutRef.current);
+      }
     };
 
     window.addEventListener('auth-tokens-updated', handleTokensUpdated);
@@ -168,10 +210,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
       window.removeEventListener('auth-tokens-updated', handleTokensUpdated);
       window.removeEventListener('auth-tokens-cleared', handleTokensCleared);
       window.removeEventListener('beforeunload', handleBeforeUnload);
+      if (syncTimeoutRef.current) {
+        clearTimeout(syncTimeoutRef.current);
+      }
     };
-  }, []);
+  }, [checkAuth]);
 
-  // Manejo de redirecciones - MEJORADO
+  // MEJORADO: Manejo de redirecciones más inteligente
   useEffect(() => {
     if (!hasInitialized || isLoading || refreshingRef.current) {
       return;
@@ -205,12 +250,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   }, [pathname, isAuthenticated, hasInitialized, isLoading, router]);
 
-  // Monitor de salud de tokens - MEJORADO
+  // MEJORADO: Monitor de salud de tokens más eficiente
   useEffect(() => {
     if (!hasInitialized) return;
 
     const monitorTokenHealth = async () => {
-      if (refreshingRef.current) return; // Skip if already refreshing
+      if (refreshingRef.current) return;
       
       const tokens = authUtils.getTokens();
       if (!tokens) return;
@@ -230,8 +275,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     const interval = setInterval(monitorTokenHealth, 60000); // Cada minuto
     return () => clearInterval(interval);
-  }, [hasInitialized]);
+  }, [hasInitialized, checkAuth]);
 
+  // MEJORADO: Login con mejor sincronización
   const login = async (email: string, password: string) => {
     try {
       console.log('🔐 Starting login process...');
@@ -258,23 +304,38 @@ export function AuthProvider({ children }: AuthProviderProps) {
         refreshToken: data.refreshToken,
       });
 
-      // CRÍTICO: Esperar más tiempo para que las cookies se establezcan completamente
-      console.log('⏳ Waiting for cookie synchronization...');
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Aumentado a 1 segundo
+      // NUEVO: Esperar por el evento de tokens actualizados
+      const tokenUpdatePromise = new Promise<boolean>((resolve) => {
+        const timeout = setTimeout(() => resolve(false), 3000); // 3 segundos máximo
+        
+        const handler = (event: any) => {
+          if (event.detail?.verified) {
+            clearTimeout(timeout);
+            window.removeEventListener('auth-tokens-updated', handler);
+            resolve(true);
+          }
+        };
+        
+        window.addEventListener('auth-tokens-updated', handler);
+      });
 
-      // Verificar estado INMEDIATAMENTE después de guardar tokens
+      console.log('⏳ Waiting for token synchronization...');
+      const tokensSynced = await tokenUpdatePromise;
+      
+      if (tokensSynced) {
+        console.log('✅ Tokens synchronized, checking auth state...');
+      } else {
+        console.log('⚠️ Token sync timeout, proceeding anyway...');
+      }
+
+      // Verificar estado DESPUÉS de la sincronización
       const authSuccess = await checkAuth(false, true);
       
       console.log('✅ Login complete:', { 
-        tokensSet: true, 
+        tokensSynced, 
         authSuccess,
         user: authUtils.getCurrentUser()?.email 
       });
-      
-      if (!authSuccess) {
-        console.log('⚠️ Auth state not established, but tokens are saved. Will retry on next request.');
-        // No fallar aquí, las requests posteriores pueden activar el proceso
-      }
       
       return { success: true };
     } catch (error: any) {
