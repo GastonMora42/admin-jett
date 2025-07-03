@@ -67,8 +67,8 @@ export default function PerfilPage() {
   useEffect(() => {
     if (user) {
       setFormData({
-        nombre: user.nombre || '',
-        apellido: user.apellido || '',
+        nombre: user.name || '',
+        apellido: user.surname || '',
         email: user.email || '',
         telefono: '',
         bio: '',

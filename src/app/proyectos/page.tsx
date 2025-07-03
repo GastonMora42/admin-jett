@@ -589,7 +589,7 @@ export default function ProyectosPage() {
           setEditingProyecto(null)
         }}
         onSubmit={editingProyecto ? handleEditProyecto : handleCreateProyecto}
-        proyecto={editingProyecto}
+        proyecto={editingProyecto ?? null}
         clientes={clientes as any}
         title={editingProyecto ? 'Editar Proyecto' : 'Nuevo Proyecto'}
       />
