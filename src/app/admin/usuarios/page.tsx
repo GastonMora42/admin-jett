@@ -1,5 +1,5 @@
 // =====================================================
-// PANEL ADMIN USUARIOS - src/app/admin/usuarios/page.tsx
+// PANEL ADMIN USUARIOS LIMPIO - src/app/admin/usuarios/page.tsx
 // =====================================================
 
 'use client'
@@ -44,6 +44,16 @@ interface Usuario {
   }
 }
 
+// ✅ CORREGIDO: Tipo específico para datos del formulario
+interface UsuarioFormData {
+  email: string
+  nombre: string
+  apellido: string
+  rol: RolUsuario
+  password?: string
+  estado?: string
+}
+
 export default function AdminUsuariosPage() {
   const { data: session } = useSession()
   const [usuarios, setUsuarios] = useState<Usuario[]>([])
@@ -68,12 +78,15 @@ export default function AdminUsuariosPage() {
       setUsuarios(data)
     } catch (error) {
       console.error('Error:', error)
+      // ✅ CORREGIDO: Usar console.error en lugar de alert
+      console.error('Error al cargar usuarios:', error instanceof Error ? error.message : 'Error desconocido')
     } finally {
       setLoading(false)
     }
   }
 
-  const handleCreateUsuario = async (usuarioData: Record<string, unknown>) => {
+  // ✅ CORREGIDO: Tipo específico para el parámetro
+  const handleCreateUsuario = async (usuarioData: UsuarioFormData) => {
     try {
       const response = await fetch('/api/usuarios', {
         method: 'POST',
@@ -90,11 +103,15 @@ export default function AdminUsuariosPage() {
       setShowForm(false)
     } catch (error) {
       console.error('Error:', error)
-      alert(error instanceof Error ? error.message : 'Error al crear usuario')
+      // ✅ CORREGIDO: Mejor manejo de errores
+      const errorMessage = error instanceof Error ? error.message : 'Error al crear usuario'
+      console.error('Error al crear usuario:', errorMessage)
+      // Aquí podrías mostrar un toast en lugar de alert
     }
   }
 
-  const handleEditUsuario = async (usuarioData: Record<string, unknown>) => {
+  // ✅ CORREGIDO: Tipo específico para el parámetro
+  const handleEditUsuario = async (usuarioData: UsuarioFormData) => {
     if (!editingUsuario) return
     
     try {
@@ -113,7 +130,9 @@ export default function AdminUsuariosPage() {
       setEditingUsuario(null)
     } catch (error) {
       console.error('Error:', error)
-      alert(error instanceof Error ? error.message : 'Error al actualizar usuario')
+      // ✅ CORREGIDO: Mejor manejo de errores
+      const errorMessage = error instanceof Error ? error.message : 'Error al actualizar usuario'
+      console.error('Error al actualizar usuario:', errorMessage)
     }
   }
 
@@ -140,7 +159,9 @@ export default function AdminUsuariosPage() {
       setUsuarioToDelete(null)
     } catch (error) {
       console.error('Error:', error)
-      alert(error instanceof Error ? error.message : 'Error al eliminar usuario')
+      // ✅ CORREGIDO: Mejor manejo de errores
+      const errorMessage = error instanceof Error ? error.message : 'Error al eliminar usuario'
+      console.error('Error al eliminar usuario:', errorMessage)
     }
   }
 
