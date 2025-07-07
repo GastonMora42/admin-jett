@@ -7,13 +7,20 @@ import { PrismaClient } from '@prisma/client'
 
 const prisma = new PrismaClient()
 
+// Next.js 15 - Nueva sintaxis para parámetros
+interface RouteParams {
+  params: Promise<{ id: string }>
+}
+
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: RouteParams
 ) {
   try {
+    const { id } = await context.params
+    
     const cliente = await prisma.cliente.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         proyectos: {
           include: {
@@ -29,18 +36,21 @@ export async function GET(
     
     return NextResponse.json(cliente)
   } catch (error) {
+    console.error('Error al obtener cliente:', error)
     return NextResponse.json({ error: 'Error al obtener cliente' }, { status: 500 })
   }
 }
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: RouteParams
 ) {
   try {
+    const { id } = await context.params
     const data = await request.json()
+    
     const cliente = await prisma.cliente.update({
-      where: { id: params.id },
+      where: { id },
       data: {
         nombre: data.nombre,
         email: data.email,
@@ -51,21 +61,24 @@ export async function PUT(
     })
     return NextResponse.json(cliente)
   } catch (error) {
+    console.error('Error al actualizar cliente:', error)
     return NextResponse.json({ error: 'Error al actualizar cliente' }, { status: 500 })
   }
 }
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: RouteParams
 ) {
   try {
+    const { id } = await context.params
+    
     await prisma.cliente.delete({
-      where: { id: params.id }
+      where: { id }
     })
     return NextResponse.json({ message: 'Cliente eliminado correctamente' })
   } catch (error) {
+    console.error('Error al eliminar cliente:', error)
     return NextResponse.json({ error: 'Error al eliminar cliente' }, { status: 500 })
   }
 }
-

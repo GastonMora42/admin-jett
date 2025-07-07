@@ -7,13 +7,20 @@ import { PrismaClient } from '@prisma/client'
 
 const prisma = new PrismaClient()
 
+// Next.js 15 - Nueva sintaxis para parámetros
+interface RouteParams {
+  params: Promise<{ id: string }>
+}
+
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: RouteParams
 ) {
   try {
+    const { id } = await context.params
+    
     const pago = await prisma.pago.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         proyecto: {
           include: {
@@ -28,21 +35,22 @@ export async function GET(
     }
     
     return NextResponse.json(pago)
-  } catch (err) {
-    console.error('Error al obtener pago:', err)
+  } catch (error) {
+    console.error('Error al obtener pago:', error)
     return NextResponse.json({ error: 'Error al obtener pago' }, { status: 500 })
   }
 }
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: RouteParams
 ) {
   try {
+    const { id } = await context.params
     const data = await request.json()
     
     const pago = await prisma.pago.update({
-      where: { id: params.id },
+      where: { id },
       data: {
         fechaPagoReal: data.fechaPagoReal ? new Date(data.fechaPagoReal) : null,
         estadoPago: data.estadoPago,
@@ -55,8 +63,8 @@ export async function PUT(
     await actualizarEstadoProyecto(pago.proyectoId)
 
     return NextResponse.json(pago)
-  } catch (err) {
-    console.error('Error al actualizar pago:', err)
+  } catch (error) {
+    console.error('Error al actualizar pago:', error)
     return NextResponse.json({ error: 'Error al actualizar pago' }, { status: 500 })
   }
 }
