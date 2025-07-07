@@ -7,6 +7,8 @@
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, FolderOpen, User, DollarSign, Calendar } from 'lucide-react'
+
+// Importar tipos correctos
 import { 
   Proyecto, 
   Cliente, 
@@ -20,7 +22,7 @@ import {
 interface FormularioProyectoProps {
   isOpen: boolean
   onClose: () => void
-  onSubmit: (data: CreateProyectoData) => Promise<void>
+  onSubmit: (data: CreateProyectoData | Partial<Proyecto>) => Promise<void>
   proyecto?: Proyecto | null
   clientes: Cliente[]
   title?: string
