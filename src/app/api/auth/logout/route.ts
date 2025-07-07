@@ -4,7 +4,7 @@
 
 import { NextResponse } from 'next/server'
 
-export async function POST(request: Request) {
+export async function POST() {
   try {
     // En una implementación completa, aquí podrías:
     // 1. Invalidar el refresh token en Cognito
@@ -19,7 +19,7 @@ export async function POST(request: Request) {
       timestamp: new Date().toISOString()
     })
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error en logout:', error)
     
     return NextResponse.json(

@@ -16,8 +16,7 @@ import {
   Shield, 
   Crown,
   Briefcase,
-  CheckCircle,
-  Mail
+  CheckCircle
 } from 'lucide-react'
 import { SilkBackground } from '@/components/SilkBackground'
 import Link from 'next/link'
@@ -51,8 +50,8 @@ export default function RegisterPage() {
       const response = await fetch('/api/auth/registration-status')
       const data = await response.json()
       setRegistrationEnabled(data.enabled)
-    } catch (error) {
-      console.error('Error checking registration status:', error)
+    } catch {
+      console.error('Error checking registration status')
     }
   }
 
@@ -118,7 +117,7 @@ export default function RegisterPage() {
       } else {
         setError(data.message || 'Error al registrar usuario')
       }
-    } catch (error) {
+    } catch {
       setError('Error de conexión. Por favor, intenta más tarde.')
     } finally {
       setLoading(false)

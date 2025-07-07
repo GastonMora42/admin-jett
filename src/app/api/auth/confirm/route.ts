@@ -25,7 +25,7 @@ export async function POST(request: Request) {
       ClientId: cognitoConfig.clientId,
       Username: email,
       ConfirmationCode: confirmationCode,
-      SecretHash: secretHash, // ← Agregado
+      SecretHash: secretHash,
     });
 
     await cognitoClient.send(confirmCommand);
@@ -34,16 +34,17 @@ export async function POST(request: Request) {
       message: 'Cuenta confirmada exitosamente. Ya puedes iniciar sesión.',
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error en confirmación:', error);
     
     let errorMessage = 'Error interno del servidor';
+    const err = error as { name?: string };
     
-    if (error.name === 'CodeMismatchException') {
+    if (err.name === 'CodeMismatchException') {
       errorMessage = 'Código de confirmación inválido';
-    } else if (error.name === 'ExpiredCodeException') {
+    } else if (err.name === 'ExpiredCodeException') {
       errorMessage = 'Código de confirmación expirado';
-    } else if (error.name === 'UserNotFoundException') {
+    } else if (err.name === 'UserNotFoundException') {
       errorMessage = 'Usuario no encontrado';
     }
     

@@ -72,10 +72,12 @@ export default function PagosPage() {
   useEffect(() => {
     fetchPagos()
     // Marcar pagos vencidos automáticamente
-    const interval = setInterval(marcarPagosVencidos, 60000) // Cada minuto
-    return () => clearInterval(interval)
-  }, [])
-
+    const interval = setInterval(() => {
+      marcarPagosVencidos();
+    }, 60000); // Cada minuto
+    return () => clearInterval(interval);
+  }, []);
+  
   const fetchPagos = async () => {
     try {
       setLoading(true)
@@ -412,25 +414,31 @@ export default function PagosPage() {
         </div>
       )}
 
-      {/* Registrar pago */}
-      <RegistrarPago
-        isOpen={showRegistrarPago}
-        onClose={() => {
-          setShowRegistrarPago(false)
-          setPagoToRegister(null)
-        }}
-        onSubmit={async (data) => {
-          // Nos aseguramos de que el objeto 'proyecto' tenga la propiedad 'id' requerida
-          const dataConProyectoId = {
-            ...data,
-            proyecto: data.proyecto && 'id' in data.proyecto
-              ? data.proyecto
-              : undefined
-          }
-          await handleRegistrarPago(dataConProyectoId)
-        }}
-        pago={pagoToRegister}
-      />
+{/* Registrar pago - Con tipado explícito */}
+<RegistrarPago
+  isOpen={showRegistrarPago}
+  onClose={() => {
+    setShowRegistrarPago(false)
+    setPagoToRegister(null)
+  }}
+  onSubmit={async (data: Record<string, unknown>) => {
+    // Convertir data al tipo correcto
+    const pagoData: Partial<Pago> = {
+      id: data.id as string | undefined,
+      numeroCuota: data.numeroCuota as number | undefined,
+      montoCuota: data.montoCuota as number | undefined,
+      fechaVencimiento: data.fechaVencimiento as string | undefined,
+      fechaPagoReal: data.fechaPagoReal as string | undefined,
+      estadoPago: data.estadoPago as EstadoPago | undefined,
+      metodoPago: data.metodoPago as string | undefined,
+      notas: data.notas as string | undefined,
+      proyectoId: data.proyectoId as string | undefined,
+      // No incluir proyecto completo, solo proyectoId
+    }
+    await handleRegistrarPago(pagoData)
+  }}
+  pago={pagoToRegister}
+/>
 
       {/* Detalle del pago */}
       <PagoDetalle

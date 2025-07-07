@@ -3,7 +3,7 @@ import { CognitoIdentityProviderClient, InitiateAuthCommand } from '@aws-sdk/cli
 import { NextResponse } from 'next/server';
 import { getSecretHash, cognitoConfig, extractUsernameFromToken } from '@/lib/cognito-utils';
 
-function decodeToken(token: string): any {
+function decodeToken(token: string): Record<string, unknown> | null {
   try {
     const base64Url = token.split('.')[1];
     if (!base64Url) return null;
@@ -16,7 +16,7 @@ function decodeToken(token: string): any {
         .join('')
     );
     
-    return JSON.parse(jsonPayload);
+    return JSON.parse(jsonPayload) as Record<string, unknown>;
   } catch (error) {
     console.error('❌ Error decoding token:', error);
     return null;
@@ -120,20 +120,21 @@ export async function POST(request: Request) {
       expiresIn: authResult.ExpiresIn,
     });
 
-  } catch (error: any) {
-    console.log('❌ [REFRESH] Error:', error.name, error.message);
+  } catch (error: unknown) {
+    console.log('❌ [REFRESH] Error:', error);
     
     let errorMessage = 'Error interno del servidor';
+    const err = error as { name?: string; message?: string };
     
-    if (error.name === 'NotAuthorizedException') {
-      if (error.message?.includes('SecretHash')) {
+    if (err.name === 'NotAuthorizedException') {
+      if (err.message?.includes('SecretHash')) {
         errorMessage = 'Error de SECRET_HASH - configuración incorrecta';
-      } else if (error.message?.includes('refresh token')) {
+      } else if (err.message?.includes('refresh token')) {
         errorMessage = 'Refresh token inválido o expirado';
       } else {
         errorMessage = 'Token de actualización inválido';
       }
-    } else if (error.name === 'UserNotFoundException') {
+    } else if (err.name === 'UserNotFoundException') {
       errorMessage = 'Usuario no encontrado';
     }
     
