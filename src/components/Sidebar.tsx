@@ -3,7 +3,7 @@
 
 import React from 'react'
 import { useAuth } from '@/components/AuthProvider'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import { 
@@ -21,7 +21,6 @@ import {
 export const Sidebar: React.FC = () => {
   const { user, logout } = useAuth()
   const pathname = usePathname()
-  const router = useRouter()
 
   // Manejar logout
   const handleLogout = async () => {
@@ -83,16 +82,18 @@ export const Sidebar: React.FC = () => {
           })}
         </nav>
 
-        {/* User section */}
+        {/* User section - ✅ CORREGIDO */}
         <div className="p-4 border-t border-white/10">
           <div className="flex items-center space-x-3 mb-4">
             <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
               <span className="text-white font-semibold">
+                {/* ✅ CORREGIDO: Usar propiedades correctas del usuario */}
                 {user?.given_name?.charAt(0) || user?.name?.charAt(0) || 'U'}
               </span>
             </div>
             <div className="flex-1 min-w-0">
               <div className="text-sm font-medium text-white truncate">
+                {/* ✅ CORREGIDO: Mostrar nombre correctamente */}
                 {user?.given_name || user?.name || 'Usuario'}
               </div>
               <div className="text-xs text-gray-400 truncate">

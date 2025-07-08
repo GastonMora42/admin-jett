@@ -1,12 +1,12 @@
 // =====================================================
-// PANEL ADMIN USUARIOS LIMPIO - src/app/admin/usuarios/page.tsx
+// PANEL ADMIN USUARIOS CORREGIDO - src/app/admin/usuarios/page.tsx
 // =====================================================
 
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useSession } from 'next-auth/react'
+import { useAuth } from '@/components/AuthProvider'
 import { 
   Users, 
   Plus, 
@@ -55,7 +55,7 @@ interface UsuarioFormData {
 }
 
 export default function AdminUsuariosPage() {
-  const { data: session } = useSession()
+  const { user } = useAuth()
   const [usuarios, setUsuarios] = useState<Usuario[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -65,11 +65,7 @@ export default function AdminUsuariosPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [usuarioToDelete, setUsuarioToDelete] = useState<Usuario | null>(null)
 
-  useEffect(() => {
-    fetchUsuarios()
-  }, [])
-
-  const fetchUsuarios = async () => {
+  const fetchUsuarios = useCallback(async () => {
     try {
       setLoading(true)
       const response = await fetch('/api/usuarios')
@@ -78,12 +74,15 @@ export default function AdminUsuariosPage() {
       setUsuarios(data)
     } catch (error) {
       console.error('Error:', error)
-      // ✅ CORREGIDO: Usar console.error en lugar de alert
       console.error('Error al cargar usuarios:', error instanceof Error ? error.message : 'Error desconocido')
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    fetchUsuarios()
+  }, [fetchUsuarios])
 
   // ✅ CORREGIDO: Tipo específico para el parámetro
   const handleCreateUsuario = async (usuarioData: UsuarioFormData) => {
@@ -103,10 +102,8 @@ export default function AdminUsuariosPage() {
       setShowForm(false)
     } catch (error) {
       console.error('Error:', error)
-      // ✅ CORREGIDO: Mejor manejo de errores
       const errorMessage = error instanceof Error ? error.message : 'Error al crear usuario'
       console.error('Error al crear usuario:', errorMessage)
-      // Aquí podrías mostrar un toast en lugar de alert
     }
   }
 
@@ -130,7 +127,6 @@ export default function AdminUsuariosPage() {
       setEditingUsuario(null)
     } catch (error) {
       console.error('Error:', error)
-      // ✅ CORREGIDO: Mejor manejo de errores
       const errorMessage = error instanceof Error ? error.message : 'Error al actualizar usuario'
       console.error('Error al actualizar usuario:', errorMessage)
     }
@@ -159,7 +155,6 @@ export default function AdminUsuariosPage() {
       setUsuarioToDelete(null)
     } catch (error) {
       console.error('Error:', error)
-      // ✅ CORREGIDO: Mejor manejo de errores
       const errorMessage = error instanceof Error ? error.message : 'Error al eliminar usuario'
       console.error('Error al eliminar usuario:', errorMessage)
     }
@@ -302,7 +297,7 @@ export default function AdminUsuariosPage() {
                 key={usuario.id}
                 usuario={usuario}
                 index={index}
-                currentUserId={session?.user?.id}
+                currentUserId={user?.sub}
                 onEdit={() => setEditingUsuario(usuario)}
                 onDelete={() => handleDeleteUsuario(usuario)}
                 getRolIcon={getRolIcon}
@@ -323,7 +318,7 @@ export default function AdminUsuariosPage() {
         onSubmit={editingUsuario ? handleEditUsuario : handleCreateUsuario}
         usuario={editingUsuario}
         title={editingUsuario ? 'Editar Usuario' : 'Nuevo Usuario'}
-        currentUserRole={session?.user?.rol as RolUsuario}
+        currentUserRole={(user?.['custom:role'] as RolUsuario) || 'VENTAS'}
       />
 
       {/* Confirmación de eliminación */}
