@@ -3,19 +3,22 @@
 // =====================================================
 
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/nextauth'
 import { PrismaClient } from '@prisma/client'
 import { CognitoService } from '@/lib/cognito'
 import { RolUsuario } from '@/types/auth'
+import { requireAuth } from '@/lib/api-auth'
 
 const prisma = new PrismaClient()
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    const authResult = await requireAuth(request)
     
-    if (!session || !['SUPERADMIN', 'ADMIN'].includes(session.user.rol)) {
+    if (authResult.error) {
+      return authResult.response
+    }
+
+    if (!['SUPERADMIN', 'ADMIN'].includes(authResult.user!.rol)) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
     }
 
@@ -41,9 +44,13 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    const authResult = await requireAuth(request)
     
-    if (!session || !['SUPERADMIN', 'ADMIN'].includes(session.user.rol)) {
+    if (authResult.error) {
+      return authResult.response
+    }
+
+    if (!['SUPERADMIN', 'ADMIN'].includes(authResult.user!.rol)) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
     }
 
@@ -60,7 +67,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Solo SUPERADMIN puede crear otros SUPERADMIN
-    if (rol === 'SUPERADMIN' && session.user.rol !== 'SUPERADMIN') {
+    if (rol === 'SUPERADMIN' && authResult.user!.rol !== 'SUPERADMIN') {
       return NextResponse.json({ error: 'Solo SUPERADMIN puede crear otros SUPERADMIN' }, { status: 403 })
     }
 
@@ -90,7 +97,7 @@ export async function POST(request: NextRequest) {
         nombre,
         apellido,
         rol: rol as RolUsuario,
-        creadoPor: session.user.id,
+        creadoPor: authResult.user!.id,
       },
       include: {
         _count: {

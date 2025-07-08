@@ -4,19 +4,26 @@
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  serverExternalPackages: ['@prisma/client'], // Actualizado desde experimental.serverComponentsExternalPackages
+  serverExternalPackages: ['@prisma/client'],
   images: {
-    remotePatterns: [ // Actualizado desde domains
+    remotePatterns: [
       {
         protocol: 'http',
         hostname: 'localhost',
       },
     ],
   },
-  // Configuración para production
   env: {
     CUSTOM_KEY: 'my-value',
   },
+  // Configuración específica para Prisma en producción
+  experimental: {
+    serverComponentsExternalPackages: ['@prisma/client'],
+  },
+  // Optimización para deploy
+  output: 'standalone',
+  poweredByHeader: false,
+  compress: true,
 }
 
 module.exports = nextConfig

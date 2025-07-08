@@ -2,39 +2,8 @@
 // TIPOS DE AUTENTICACIÓN - src/types/auth.ts
 // =====================================================
 
-import { DefaultSession } from 'next-auth'
-
 export type RolUsuario = 'SUPERADMIN' | 'ADMIN' | 'VENTAS'
 export type EstadoUsuario = 'ACTIVO' | 'INACTIVO' | 'SUSPENDIDO'
-
-declare module 'next-auth' {
-  interface Session {
-    user: {
-      id: string
-      rol: RolUsuario
-      estado: EstadoUsuario
-      nombre: string
-      apellido: string
-    } & DefaultSession['user']
-  }
-  
-  interface User {
-    rol?: RolUsuario
-    estado?: EstadoUsuario
-    nombre?: string
-    apellido?: string
-  }
-}
-
-declare module 'next-auth/jwt' {
-  interface JWT {
-    userId: string
-    rol: RolUsuario
-    estado: EstadoUsuario
-    nombre: string
-    apellido: string
-  }
-}
 
 export interface UsuarioCompleto {
   id: string

@@ -1,0 +1,13 @@
+{
+    "buildCommand": "prisma generate && npm run build",
+    "framework": "nextjs",
+    "env": {
+      "PRISMA_GENERATE_SKIP_AUTOINSTALL": "true"
+    },
+    "functions": {
+      "app/api/**/*.ts": {
+        "maxDuration": 30
+      }
+    },
+    "regions": ["iad1"]
+  }

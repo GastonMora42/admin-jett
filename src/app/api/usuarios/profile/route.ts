@@ -1,26 +1,23 @@
-
 // =====================================================
 // API PERFIL USUARIO - src/app/api/usuarios/profile/route.ts
 // =====================================================
 
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/nextauth'
 import { PrismaClient } from '@prisma/client'
-import { CognitoService } from '@/lib/cognito'
+import { requireAuth } from '@/lib/api-auth'
 
 const prisma = new PrismaClient()
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    const authResult = await requireAuth(request)
     
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+    if (authResult.error) {
+      return authResult.response
     }
 
     const usuario = await prisma.usuario.findUnique({
-      where: { id: session.user.id },
+      where: { id: authResult.user!.id },
       select: {
         id: true,
         email: true,
@@ -46,10 +43,10 @@ export async function GET() {
 
 export async function PUT(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    const authResult = await requireAuth(request)
     
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+    if (authResult.error) {
+      return authResult.response
     }
 
     const data = await request.json()
@@ -57,25 +54,12 @@ export async function PUT(request: NextRequest) {
 
     // Actualizar en la base de datos
     const usuario = await prisma.usuario.update({
-      where: { id: session.user.id },
+      where: { id: authResult.user!.id },
       data: {
         ...(nombre && { nombre }),
         ...(apellido && { apellido }),
       }
     })
-
-    // Actualizar en Cognito si hay cambios en nombre/apellido
-    if (nombre || apellido) {
-      try {
-        await CognitoService.updateUser(usuario.cognitoId, {
-          firstName: nombre || usuario.nombre,
-          lastName: apellido || usuario.apellido,
-        })
-      } catch (cognitoError) {
-        console.error('Error actualizando Cognito:', cognitoError)
-        // No fallar la operación si Cognito falla
-      }
-    }
 
     return NextResponse.json({ message: 'Perfil actualizado correctamente', usuario })
   } catch (error) {
