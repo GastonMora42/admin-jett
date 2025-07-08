@@ -16,12 +16,7 @@ const nextConfig = {
   env: {
     CUSTOM_KEY: 'my-value',
   },
-  // Configuración específica para Prisma en producción
-  experimental: {
-    serverComponentsExternalPackages: ['@prisma/client'],
-  },
   // Optimización para deploy
-  output: 'standalone',
   poweredByHeader: false,
   compress: true,
 }
