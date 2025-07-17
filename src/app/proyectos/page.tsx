@@ -1,4 +1,4 @@
-// src/app/proyectos/page.tsx - VERSIÓN RESPONSIVE OPTIMIZADA
+// src/app/proyectos/page.tsx - VERSIÓN CON VISTA DE TABLA FUNCIONAL
 'use client'
 
 import React, { useState, useEffect, useMemo } from 'react'
@@ -26,7 +26,6 @@ import {
   RefreshCw,
   GridIcon,
   List,
-  MapPin,
   Target,
   Zap,
   Star,
@@ -64,7 +63,7 @@ export default function ProyectosPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [proyectoToDelete, setProyectoToDelete] = useState<Proyecto | null>(null)
   const [selectedProyectos, setSelectedProyectos] = useState<string[]>([])
-  const [vista, setVista] = useState<'cards' | 'table' | 'kanban'>('cards')
+  const [vista, setVista] = useState<'cards' | 'table'>('cards')
   const [sortBy, setSortBy] = useState<'fecha' | 'monto' | 'nombre' | 'estado'>('fecha')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [showMobileFilters, setShowMobileFilters] = useState(false)
@@ -73,8 +72,6 @@ export default function ProyectosPage() {
 
   useEffect(() => {
     loadData()
-    // No es necesario limpiar nada porque 'api.cleanup' no existe
-    // y no hay recursos que limpiar aquí.
   }, [])
 
   const loadData = async () => {
@@ -464,12 +461,32 @@ export default function ProyectosPage() {
                 className="input-glass pl-10 w-full"
               />
             </div>
-            <button
-              onClick={() => setShowMobileFilters(!showMobileFilters)}
-              className="btn-secondary"
-            >
-              <Menu className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-2">
+              <div className="flex bg-white/5 rounded-lg p-1">
+                <button
+                  onClick={() => setVista('cards')}
+                  className={`px-2 py-1 rounded text-sm transition-colors ${
+                    vista === 'cards' ? 'bg-white/10 text-white' : 'text-gray-400'
+                  }`}
+                >
+                  <GridIcon className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setVista('table')}
+                  className={`px-2 py-1 rounded text-sm transition-colors ${
+                    vista === 'table' ? 'bg-white/10 text-white' : 'text-gray-400'
+                  }`}
+                >
+                  <List className="w-4 h-4" />
+                </button>
+              </div>
+              <button
+                onClick={() => setShowMobileFilters(!showMobileFilters)}
+                className="btn-secondary p-2"
+              >
+                <Menu className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           {showMobileFilters && (
@@ -572,7 +589,7 @@ export default function ProyectosPage() {
             }
           }}
         />
-      ) : (
+      ) : vista === 'cards' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
           <AnimatePresence>
             {filteredAndSortedProyectos.map((proyecto, index) => (
@@ -596,6 +613,21 @@ export default function ProyectosPage() {
             ))}
           </AnimatePresence>
         </div>
+      ) : (
+        <ProyectosTable
+          proyectos={filteredAndSortedProyectos}
+          selectedProyectos={selectedProyectos}
+          onSelectProyecto={(id, selected) => {
+            if (selected) {
+              setSelectedProyectos([...selectedProyectos, id])
+            } else {
+              setSelectedProyectos(selectedProyectos.filter(pId => pId !== id))
+            }
+          }}
+          onEdit={setEditingProyecto}
+          onDelete={handleDeleteProyecto}
+          onEstadoChange={handleEstadoChange}
+        />
       )}
 
       {/* Formulario de proyecto */}
@@ -648,8 +680,6 @@ const ProyectoCard: React.FC<ProyectoCardProps> = React.memo(({
   isSelected
 }) => {
   const [showMenu, setShowMenu] = useState(false)
-  // Después de la definición del componente ProyectoCard
- ProyectoCard.displayName = 'ProyectoCard'
 
   const getEstadoIcon = (estado: EstadoProyecto) => {
     switch (estado) {
@@ -856,3 +886,168 @@ const ProyectoCard: React.FC<ProyectoCardProps> = React.memo(({
     </motion.div>
   )
 })
+
+// Asignar displayName para evitar warnings de ESLint
+ProyectoCard.displayName = 'ProyectoCard'
+
+// Componente de tabla de proyectos
+interface ProyectosTableProps {
+  proyectos: Proyecto[]
+  selectedProyectos: string[]
+  onSelectProyecto: (id: string, selected: boolean) => void
+  onEdit: (proyecto: Proyecto) => void
+  onDelete: (proyecto: Proyecto) => void
+  onEstadoChange: (proyecto: Proyecto, estado: EstadoProyecto) => void
+}
+
+const ProyectosTable: React.FC<ProyectosTableProps> = ({
+  proyectos,
+  selectedProyectos,
+  onSelectProyecto,
+  onEdit,
+  onDelete,
+  onEstadoChange
+}) => {
+  const getEstadoColor = (estado: EstadoProyecto) => {
+    switch (estado) {
+      case 'EN_DESARROLLO': return 'text-blue-400 bg-blue-500/20'
+      case 'COMPLETADO': return 'text-green-400 bg-green-500/20'
+      case 'EN_PAUSA': return 'text-yellow-400 bg-yellow-500/20'
+      case 'CANCELADO': return 'text-red-400 bg-red-500/20'
+      default: return 'text-gray-400 bg-gray-500/20'
+    }
+  }
+
+  const getTipoLabel = (tipo: TipoProyecto) => {
+    const labels = {
+      SOFTWARE_A_MEDIDA: 'Software a Medida',
+      ECOMMERCE: 'E-commerce',
+      LANDING_PAGE: 'Landing Page',
+      SISTEMA_WEB: 'Sistema Web',
+      APP_MOVIL: 'App Móvil',
+      MANTENIMIENTO: 'Mantenimiento'
+    }
+    return labels[tipo] || tipo
+  }
+
+  return (
+    <div className="card overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead className="bg-white/5">
+            <tr>
+              <th className="text-left p-4">
+                <input 
+                  type="checkbox" 
+                  className="rounded bg-white/10 border-white/20"
+                  checked={selectedProyectos.length === proyectos.length && proyectos.length > 0}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      proyectos.forEach(p => onSelectProyecto(p.id, true))
+                    } else {
+                      proyectos.forEach(p => onSelectProyecto(p.id, false))
+                    }
+                  }}
+                />
+              </th>
+              <th className="text-left p-4 text-gray-400 font-medium">Proyecto</th>
+              <th className="text-left p-4 text-gray-400 font-medium">Cliente</th>
+              <th className="text-left p-4 text-gray-400 font-medium">Tipo</th>
+              <th className="text-left p-4 text-gray-400 font-medium">Monto</th>
+              <th className="text-left p-4 text-gray-400 font-medium">Estado</th>
+              <th className="text-left p-4 text-gray-400 font-medium">Progreso</th>
+              <th className="text-left p-4 text-gray-400 font-medium">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {proyectos.map((proyecto, index) => {
+              const pagosPagados = proyecto.pagos?.filter(p => p.estadoPago === 'PAGADO').length || 0
+              const totalPagos = proyecto.pagos?.length || 0
+              const progreso = totalPagos > 0 ? (pagosPagados / totalPagos) * 100 : 0
+
+              return (
+                <motion.tr
+                  key={proyecto.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.05 }}
+                  className="border-t border-white/5 hover:bg-white/5 transition-colors"
+                >
+                  <td className="p-4">
+                    <input
+                      type="checkbox"
+                      checked={selectedProyectos.includes(proyecto.id)}
+                      onChange={(e) => onSelectProyecto(proyecto.id, e.target.checked)}
+                      className="rounded bg-white/10 border-white/20"
+                    />
+                  </td>
+                  <td className="p-4">
+                    <div>
+                      <p className="text-white font-medium">{proyecto.nombre}</p>
+                      <p className="text-gray-400 text-sm">
+                        Inicio: {new Date(proyecto.fechaInicio).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </td>
+                  <td className="p-4">
+                    <div>
+                      <p className="text-white">{proyecto.cliente?.nombre}</p>
+                      {proyecto.cliente?.empresa && (
+                        <p className="text-gray-400 text-sm">{proyecto.cliente.empresa}</p>
+                      )}
+                    </div>
+                  </td>
+                  <td className="p-4">
+                    <span className="text-gray-300">{getTipoLabel(proyecto.tipo)}</span>
+                  </td>
+                  <td className="p-4">
+                    <span className="text-green-400 font-medium">
+                      ${proyecto.montoTotal.toLocaleString()}
+                    </span>
+                  </td>
+                  <td className="p-4">
+                    <span className={`px-2 py-1 rounded text-xs font-medium ${getEstadoColor(proyecto.estadoProyecto)}`}>
+                      {proyecto.estadoProyecto.replace('_', ' ')}
+                    </span>
+                  </td>
+                  <td className="p-4">
+                    <div className="w-full">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs text-gray-400">{progreso.toFixed(0)}%</span>
+                        <span className="text-xs text-gray-400">{pagosPagados}/{totalPagos}</span>
+                      </div>
+                      <div className="w-full bg-white/10 rounded-full h-2">
+                        <div
+                          className="bg-gradient-to-r from-green-500 to-blue-500 h-2 rounded-full transition-all"
+                          style={{ width: `${progreso}%` }}
+                        />
+                      </div>
+                    </div>
+                  </td>
+                  <td className="p-4">
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => onEdit(proyecto)}
+                        className="text-gray-400 hover:text-blue-400 transition-colors"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => onDelete(proyecto)}
+                        className="text-gray-400 hover:text-red-400 transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </td>
+                </motion.tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+ProyectosTable.displayName = 'ProyectosTable'

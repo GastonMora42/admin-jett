@@ -106,12 +106,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
       icon: Calendar,
       description: 'Agenda y fechas' 
     },
-    { 
-      name: 'Configuración', 
-      href: '/configuracion', 
-      icon: Settings,
-      description: 'Ajustes del sistema' 
-    },
   ]
 
   // Sidebar para móvil (overlay)

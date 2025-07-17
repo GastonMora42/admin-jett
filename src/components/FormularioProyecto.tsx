@@ -1,50 +1,44 @@
-// src/components/FormularioProyecto.tsx - VERSIÓN MEJORADA Y RESPONSIVA
+// src/components/FormularioProyecto.tsx - COMPONENTE COMPLETO
 'use client'
 
 import React, { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
   X, 
-  FolderOpen, 
-  User, 
-  DollarSign, 
-  Calendar, 
-  ArrowLeftRight,
+  Save,
   Check,
   AlertTriangle,
   Info,
-  Sparkles,
-  Zap,
-  Target,
-  Clock,
+  FolderOpen,
+  DollarSign,
+  Calendar,
+  User,
   CreditCard,
-  Calculator,
-  TrendingUp,
-  Star,
-  Briefcase
+  Target,
+  FileText
 } from 'lucide-react'
-import { useCurrency } from '@/lib/currency-config'
-import { 
-  Proyecto, 
-  Cliente, 
-  CreateProyectoData,
-  TipoProyecto, 
-  FormaPago,
-  TIPOS_PROYECTO_LABELS,
-  FORMAS_PAGO_LABELS
-} from '@/types/index'
-
-interface CreateProyectoDataWithCurrency extends CreateProyectoData {
-  currency: 'USD' | 'ARS'
-}
+import type { Proyecto, Cliente, TipoProyecto, FormaPago, EstadoProyecto } from '@/types/index'
 
 interface FormularioProyectoProps {
   isOpen: boolean
   onClose: () => void
-  onSubmit: (data: CreateProyectoDataWithCurrency) => Promise<void>
+  onSubmit: (data: any) => Promise<void>
   proyecto?: Proyecto | null
   clientes: Cliente[]
   title?: string
+}
+
+interface FormData {
+  nombre: string
+  tipo: TipoProyecto
+  montoTotal: number | string
+  formaPago: FormaPago
+  cuotas: number | string
+  fechaInicio: string
+  fechaEntrega: string
+  clienteId: string
+  estadoProyecto?: EstadoProyecto
+  descripcion?: string
 }
 
 interface FormErrors {
@@ -55,79 +49,64 @@ interface FormTouched {
   [key: string]: boolean
 }
 
-const FormularioProyecto: React.FC<FormularioProyectoProps> = ({
+export const FormularioProyecto: React.FC<FormularioProyectoProps> = ({
   isOpen,
   onClose,
   onSubmit,
   proyecto = null,
-  clientes,
+  clientes = [],
   title = 'Nuevo Proyecto'
 }) => {
-  const { settings, formatCurrency, getCurrencySymbol, getProjectCurrency, convertCurrency } = useCurrency()
-  const [formData, setFormData] = useState<CreateProyectoDataWithCurrency>({
+  const [formData, setFormData] = useState<FormData>({
     nombre: '',
     tipo: 'SOFTWARE_A_MEDIDA',
-    montoTotal: 0,
+    montoTotal: '',
     formaPago: 'PAGO_UNICO',
     cuotas: 1,
-    fechaInicio: new Date().toISOString().split('T')[0],
+    fechaInicio: '',
     fechaEntrega: '',
     clienteId: '',
-    currency: settings.defaultCurrency
+    estadoProyecto: 'EN_DESARROLLO',
+    descripcion: ''
   })
+  
   const [errors, setErrors] = useState<FormErrors>({})
   const [touched, setTouched] = useState<FormTouched>({})
   const [loading, setLoading] = useState(false)
   const [currentStep, setCurrentStep] = useState(1)
-  const [showCurrencyConverter, setShowCurrencyConverter] = useState(false)
-  const [showCalculator, setShowCalculator] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
-
+  
   const formRef = useRef<HTMLFormElement>(null)
   const firstInputRef = useRef<HTMLInputElement>(null)
 
-  const tiposProyecto: { value: TipoProyecto; label: string; icon: any; description: string }[] = [
-    { value: 'SOFTWARE_A_MEDIDA', label: 'Software a Medida', icon: Zap, description: 'Desarrollo personalizado' },
-    { value: 'ECOMMERCE', label: 'E-commerce', icon: CreditCard, description: 'Tienda online completa' },
-    { value: 'LANDING_PAGE', label: 'Landing Page', icon: Target, description: 'Página de aterrizaje' },
-    { value: 'SISTEMA_WEB', label: 'Sistema Web', icon: Briefcase, description: 'Aplicación web compleja' },
-    { value: 'APP_MOVIL', label: 'App Móvil', icon: Sparkles, description: 'Aplicación móvil nativa' },
-    { value: 'MANTENIMIENTO', label: 'Mantenimiento', icon: Clock, description: 'Soporte y actualización' }
-  ]
-
-  const formasPago: { value: FormaPago; label: string; description: string }[] = [
-    { value: 'PAGO_UNICO', label: 'Pago Único', description: 'Un solo pago al completar' },
-    { value: 'DOS_CUOTAS', label: '2 Cuotas', description: '50% inicio, 50% final' },
-    { value: 'TRES_CUOTAS', label: '3 Cuotas', description: 'Inicio, medio y final' },
-    { value: 'MENSUAL', label: 'Mensual', description: 'Pagos mensuales' }
-  ]
-
+  // Resetear formulario cuando se abre/cierra
   useEffect(() => {
     if (isOpen) {
       if (proyecto) {
-        const projectCurrency = getProjectCurrency(proyecto.id)
         setFormData({
           nombre: proyecto.nombre || '',
           tipo: proyecto.tipo || 'SOFTWARE_A_MEDIDA',
-          montoTotal: proyecto.montoTotal || 0,
+          montoTotal: proyecto.montoTotal || '',
           formaPago: proyecto.formaPago || 'PAGO_UNICO',
           cuotas: proyecto.cuotas || 1,
-          fechaInicio: proyecto.fechaInicio ? proyecto.fechaInicio.split('T')[0] : new Date().toISOString().split('T')[0],
+          fechaInicio: proyecto.fechaInicio ? proyecto.fechaInicio.split('T')[0] : '',
           fechaEntrega: proyecto.fechaEntrega ? proyecto.fechaEntrega.split('T')[0] : '',
           clienteId: proyecto.clienteId || '',
-          currency: projectCurrency
+          estadoProyecto: proyecto.estadoProyecto || 'EN_DESARROLLO',
+          descripcion: ''
         })
       } else {
         setFormData({
           nombre: '',
           tipo: 'SOFTWARE_A_MEDIDA',
-          montoTotal: 0,
+          montoTotal: '',
           formaPago: 'PAGO_UNICO',
           cuotas: 1,
           fechaInicio: new Date().toISOString().split('T')[0],
           fechaEntrega: '',
-          clienteId: clientes.length > 0 ? clientes[0].id : '',
-          currency: settings.defaultCurrency
+          clienteId: '',
+          estadoProyecto: 'EN_DESARROLLO',
+          descripcion: ''
         })
       }
       setErrors({})
@@ -139,30 +118,39 @@ const FormularioProyecto: React.FC<FormularioProyectoProps> = ({
         firstInputRef.current?.focus()
       }, 300)
     }
-  }, [proyecto, clientes, isOpen, settings.defaultCurrency, getProjectCurrency])
+  }, [proyecto, isOpen])
 
+  // Validación en tiempo real
   const validateField = (name: string, value: any): string => {
     switch (name) {
       case 'nombre':
-        if (!value?.trim()) return 'El nombre del proyecto es requerido'
-        if (value.length < 3) return 'El nombre debe tener al menos 3 caracteres'
-        if (value.length > 200) return 'El nombre es demasiado largo'
+        if (!value || !value.toString().trim()) return 'El nombre del proyecto es requerido'
+        if (value.toString().length < 3) return 'El nombre debe tener al menos 3 caracteres'
+        if (value.toString().length > 200) return 'El nombre es demasiado largo'
         return ''
       
       case 'clienteId':
-        if (!value) return 'Debe seleccionar un cliente'
+        if (!value) return 'Debes seleccionar un cliente'
         return ''
       
       case 'montoTotal':
-        if (!value || value <= 0) return 'El monto debe ser mayor a 0'
-        if (value > 10000000) return 'El monto es demasiado alto'
+        const monto = typeof value === 'string' ? parseFloat(value) : value
+        if (!value || isNaN(monto)) return 'El monto total es requerido'
+        if (monto <= 0) return 'El monto debe ser mayor a 0'
+        if (monto > 10000000) return 'El monto es demasiado alto'
+        return ''
+      
+      case 'fechaInicio':
+        if (!value) return 'La fecha de inicio es requerida'
         return ''
       
       case 'cuotas':
-        if (formData.formaPago === 'MENSUAL' && (!value || value < 1)) {
-          return 'Debe especificar el número de cuotas'
+        if (formData.formaPago !== 'PAGO_UNICO') {
+          const cuotasNum = typeof value === 'string' ? parseInt(value) : value
+          if (!value || isNaN(cuotasNum)) return 'El número de cuotas es requerido'
+          if (cuotasNum < 1) return 'Debe haber al menos 1 cuota'
+          if (cuotasNum > 60) return 'Máximo 60 cuotas'
         }
-        if (value > 60) return 'Máximo 60 cuotas'
         return ''
       
       default:
@@ -170,51 +158,63 @@ const FormularioProyecto: React.FC<FormularioProyectoProps> = ({
     }
   }
 
+  // Validar todo el formulario
   const validateForm = (): boolean => {
     const newErrors: FormErrors = {}
-    const fieldsToValidate = ['nombre', 'clienteId', 'montoTotal', 'cuotas']
     
-    fieldsToValidate.forEach(field => {
-      const error = validateField(field, formData[field as keyof CreateProyectoDataWithCurrency])
-      if (error) newErrors[field] = error
+    Object.keys(formData).forEach(key => {
+      if (key !== 'fechaEntrega' && key !== 'descripcion' && key !== 'estadoProyecto') {
+        const error = validateField(key, formData[key as keyof FormData])
+        if (error) newErrors[key] = error
+      }
     })
     
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
 
-  const handleInputChange = (field: keyof CreateProyectoDataWithCurrency, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }))
+  // Manejar cambios en los inputs
+  const handleInputChange = (field: keyof FormData, value: any) => {
+    setFormData(prev => {
+      const newData = { ...prev, [field]: value }
+      
+      // Auto-ajustar cuotas según forma de pago
+      if (field === 'formaPago') {
+        switch (value) {
+          case 'PAGO_UNICO':
+            newData.cuotas = 1
+            break
+          case 'DOS_CUOTAS':
+            newData.cuotas = 2
+            break
+          case 'TRES_CUOTAS':
+            newData.cuotas = 3
+            break
+          case 'MENSUAL':
+            newData.cuotas = newData.cuotas || 6
+            break
+        }
+      }
+      
+      return newData
+    })
     
+    // Validar en tiempo real solo si el campo ya fue tocado
     if (touched[field]) {
       const error = validateField(field, value)
       setErrors(prev => ({ ...prev, [field]: error }))
     }
   }
 
-  const handleBlur = (field: keyof CreateProyectoDataWithCurrency) => {
+  // Manejar cuando un campo pierde el foco
+  const handleBlur = (field: keyof FormData) => {
     setTouched(prev => ({ ...prev, [field]: true }))
     const value = formData[field]
     const error = validateField(field, value)
     setErrors(prev => ({ ...prev, [field]: error }))
   }
 
-  const handleCurrencyChange = (newCurrency: 'USD' | 'ARS') => {
-    if (formData.currency !== newCurrency && formData.montoTotal > 0) {
-      const convertedAmount = convertCurrency(formData.montoTotal, formData.currency, newCurrency)
-      setFormData({
-        ...formData,
-        currency: newCurrency,
-        montoTotal: Math.round(convertedAmount)
-      })
-    } else {
-      setFormData({
-        ...formData,
-        currency: newCurrency
-      })
-    }
-  }
-
+  // Manejar envío del formulario
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
@@ -230,21 +230,22 @@ const FormularioProyecto: React.FC<FormularioProyectoProps> = ({
     try {
       setLoading(true)
       
-      let cuotasFinales = formData.cuotas
-      if (formData.formaPago === 'DOS_CUOTAS') cuotasFinales = 2
-      else if (formData.formaPago === 'TRES_CUOTAS') cuotasFinales = 3
-      else if (formData.formaPago === 'PAGO_UNICO') cuotasFinales = 1
-
-      const submitData: CreateProyectoDataWithCurrency = {
+      const submitData = {
         ...formData,
-        cuotas: cuotasFinales
+        montoTotal: typeof formData.montoTotal === 'string' 
+          ? parseFloat(formData.montoTotal) 
+          : formData.montoTotal,
+        cuotas: typeof formData.cuotas === 'string' 
+          ? parseInt(formData.cuotas) 
+          : formData.cuotas
       }
-
+      
       await onSubmit(submitData)
+      
       setShowSuccess(true)
       setTimeout(() => {
         onClose()
-      }, 2000)
+      }, 1500)
     } catch (error) {
       console.error('Error al guardar proyecto:', error)
     } finally {
@@ -252,13 +253,14 @@ const FormularioProyecto: React.FC<FormularioProyectoProps> = ({
     }
   }
 
+  // Avanzar al siguiente paso
   const nextStep = () => {
     if (currentStep === 1) {
-      const step1Fields = ['nombre', 'clienteId']
+      const step1Fields = ['nombre', 'clienteId', 'tipo']
       let hasErrors = false
       
       step1Fields.forEach(field => {
-        const error = validateField(field, formData[field as keyof CreateProyectoDataWithCurrency])
+        const error = validateField(field, formData[field as keyof FormData])
         if (error) {
           setErrors(prev => ({ ...prev, [field]: error }))
           setTouched(prev => ({ ...prev, [field]: true }))
@@ -269,44 +271,19 @@ const FormularioProyecto: React.FC<FormularioProyectoProps> = ({
       if (!hasErrors) {
         setCurrentStep(2)
       }
-    } else if (currentStep === 2) {
-      const step2Fields = ['montoTotal']
-      let hasErrors = false
-      
-      step2Fields.forEach(field => {
-        const error = validateField(field, formData[field as keyof CreateProyectoDataWithCurrency])
-        if (error) {
-          setErrors(prev => ({ ...prev, [field]: error }))
-          setTouched(prev => ({ ...prev, [field]: true }))
-          hasErrors = true
-        }
-      })
-      
-      if (!hasErrors) {
-        setCurrentStep(3)
-      }
     }
   }
 
-  const prevStep = () => {
-    setCurrentStep(prev => Math.max(1, prev - 1))
-  }
-
-  const progress = (currentStep / 3) * 100
-  const isFormComplete = formData.nombre && formData.clienteId && formData.montoTotal > 0 && !Object.values(errors).some(error => error)
-
-  const clienteSeleccionado = clientes.find(c => c.id === formData.clienteId)
-  const montoPorCuota = formData.montoTotal / (
-    formData.formaPago === 'DOS_CUOTAS' ? 2 :
-    formData.formaPago === 'TRES_CUOTAS' ? 3 :
-    formData.cuotas || 1
-  )
+  const progress = (currentStep / 2) * 100
+  const isFormComplete = formData.nombre && formData.clienteId && formData.montoTotal && 
+                        formData.fechaInicio && !Object.values(errors).some(error => error)
 
   if (!isOpen) return null
 
   return (
     <AnimatePresence mode="wait">
       <motion.div
+        key="backdrop"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -314,12 +291,13 @@ const FormularioProyecto: React.FC<FormularioProyectoProps> = ({
         onClick={onClose}
       >
         <motion.div
+          key="modal"
           initial={{ scale: 0.9, opacity: 0, y: 20 }}
           animate={{ scale: 1, opacity: 1, y: 0 }}
           exit={{ scale: 0.9, opacity: 0, y: 20 }}
           transition={{ type: "spring", damping: 25, stiffness: 200 }}
           onClick={(e) => e.stopPropagation()}
-          className="bg-gradient-to-br from-slate-900/95 to-slate-800/95 backdrop-blur-xl border border-white/20 rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl"
+          className="bg-gradient-to-br from-slate-900/95 to-slate-800/95 backdrop-blur-xl border border-white/20 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl"
         >
           {/* Success Animation */}
           <AnimatePresence>
@@ -347,11 +325,11 @@ const FormularioProyecto: React.FC<FormularioProyectoProps> = ({
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-2xl font-bold text-white flex items-center">
-                  <FolderOpen className="w-6 h-6 mr-3 text-purple-400" />
+                  <FolderOpen className="w-6 h-6 mr-3 text-blue-400" />
                   {title}
                 </h2>
                 <p className="text-gray-400 text-sm mt-1">
-                  {proyecto ? 'Actualiza los detalles del proyecto' : 'Crea un nuevo proyecto para tu cliente'}
+                  {proyecto ? 'Actualiza la información del proyecto' : 'Crea un nuevo proyecto para tu cliente'}
                 </p>
               </div>
               <button
@@ -366,48 +344,24 @@ const FormularioProyecto: React.FC<FormularioProyectoProps> = ({
             {/* Progress Bar */}
             <div className="mt-4">
               <div className="flex items-center justify-between text-sm text-gray-400 mb-2">
-                <span>Paso {currentStep} de 3</span>
+                <span>Paso {currentStep} de 2</span>
                 <span>{Math.round(progress)}% completado</span>
               </div>
               <div className="w-full bg-white/10 rounded-full h-2">
                 <motion.div
-                  className="bg-gradient-to-r from-purple-500 to-blue-600 h-2 rounded-full"
+                  className="bg-gradient-to-r from-blue-500 to-purple-600 h-2 rounded-full"
                   initial={{ width: 0 }}
                   animate={{ width: `${progress}%` }}
                   transition={{ duration: 0.5 }}
                 />
               </div>
             </div>
-
-            {/* Step indicators */}
-            <div className="flex items-center justify-center mt-4 space-x-4">
-              {[1, 2, 3].map((step) => (
-                <div
-                  key={step}
-                  className={`flex items-center ${step < 3 ? 'flex-1' : ''}`}
-                >
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-all duration-200 ${
-                    step <= currentStep 
-                      ? 'bg-gradient-to-r from-purple-500 to-blue-600 text-white' 
-                      : 'bg-white/10 text-gray-400'
-                  }`}>
-                    {step}
-                  </div>
-                  {step < 3 && (
-                    <div className={`flex-1 h-1 mx-2 rounded transition-all duration-200 ${
-                      step < currentStep ? 'bg-gradient-to-r from-purple-500 to-blue-600' : 'bg-white/10'
-                    }`} />
-                  )}
-                </div>
-              ))}
-            </div>
           </div>
 
           {/* Form Content */}
-          <div className="p-6 overflow-y-auto max-h-[calc(90vh-280px)]">
-            <form ref={formRef} onSubmit={handleSubmit}>
+          <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
+            <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
               <AnimatePresence mode="wait">
-                {/* Step 1: Información Básica */}
                 {currentStep === 1 && (
                   <motion.div
                     key="step1"
@@ -418,15 +372,15 @@ const FormularioProyecto: React.FC<FormularioProyectoProps> = ({
                     className="space-y-6"
                   >
                     <div className="text-center mb-6">
-                      <Sparkles className="w-16 h-16 text-purple-400 mx-auto mb-3" />
-                      <h3 className="text-lg font-semibold text-white">Información del Proyecto</h3>
-                      <p className="text-gray-400 text-sm">Detalles básicos y cliente</p>
+                      <Target className="w-16 h-16 text-blue-400 mx-auto mb-3" />
+                      <h3 className="text-lg font-semibold text-white">Información Básica</h3>
+                      <p className="text-gray-400 text-sm">Define los aspectos principales del proyecto</p>
                     </div>
 
-                    {/* Nombre del Proyecto */}
+                    {/* Nombre del proyecto */}
                     <div className="space-y-2">
                       <label className="block text-sm font-medium text-gray-300">
-                        <FolderOpen className="w-4 h-4 inline mr-2" />
+                        <FileText className="w-4 h-4 inline mr-2" />
                         Nombre del Proyecto *
                       </label>
                       <div className="relative">
@@ -441,9 +395,9 @@ const FormularioProyecto: React.FC<FormularioProyectoProps> = ({
                               ? 'border-red-500/50 focus:ring-red-500/20 bg-red-500/5'
                               : formData.nombre && !errors.nombre
                               ? 'border-green-500/50 focus:ring-green-500/20 bg-green-500/5'
-                              : 'border-white/20 focus:ring-purple-500/20 focus:border-purple-500/50'
+                              : 'border-white/20 focus:ring-blue-500/20 focus:border-blue-500/50'
                           }`}
-                          placeholder="Ej: Sistema de gestión de inventario"
+                          placeholder="Ej: Sistema de gestión para restaurant"
                           disabled={loading}
                         />
                         {formData.nombre && !errors.nombre && (
@@ -475,19 +429,19 @@ const FormularioProyecto: React.FC<FormularioProyectoProps> = ({
                         value={formData.clienteId}
                         onChange={(e) => handleInputChange('clienteId', e.target.value)}
                         onBlur={() => handleBlur('clienteId')}
-                        className={`w-full px-4 py-3 bg-white/5 border rounded-xl text-white transition-all duration-200 focus:outline-none focus:ring-2 ${
+                        className={`w-full px-4 py-3 bg-white/5 border rounded-xl text-white focus:outline-none focus:ring-2 transition-all duration-200 ${
                           errors.clienteId && touched.clienteId
                             ? 'border-red-500/50 focus:ring-red-500/20 bg-red-500/5'
                             : formData.clienteId && !errors.clienteId
                             ? 'border-green-500/50 focus:ring-green-500/20 bg-green-500/5'
-                            : 'border-white/20 focus:ring-purple-500/20 focus:border-purple-500/50'
+                            : 'border-white/20 focus:ring-blue-500/20 focus:border-blue-500/50'
                         }`}
                         disabled={loading}
                       >
-                        <option value="">Seleccionar cliente</option>
+                        <option value="">Selecciona un cliente</option>
                         {clientes.map((cliente) => (
-                          <option key={cliente.id} value={cliente.id} className="bg-slate-800">
-                            {cliente.nombre} {cliente.empresa && `(${cliente.empresa})`}
+                          <option key={cliente.id} value={cliente.id}>
+                            {cliente.nombre} {cliente.empresa ? `- ${cliente.empresa}` : ''}
                           </option>
                         ))}
                       </select>
@@ -506,76 +460,47 @@ const FormularioProyecto: React.FC<FormularioProyectoProps> = ({
                       </AnimatePresence>
                     </div>
 
-                    {/* Tipo de Proyecto */}
-                    <div className="space-y-3">
+                    {/* Tipo de proyecto */}
+                    <div className="space-y-2">
                       <label className="block text-sm font-medium text-gray-300">
-                        Tipo de Proyecto
+                        <Target className="w-4 h-4 inline mr-2" />
+                        Tipo de Proyecto *
                       </label>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {tiposProyecto.map((tipo) => (
-                          <motion.label
-                            key={tipo.value}
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
-                            className={`cursor-pointer p-4 rounded-xl border transition-all duration-200 ${
-                              formData.tipo === tipo.value
-                                ? 'border-purple-500/50 bg-purple-500/10'
-                                : 'border-white/10 bg-white/5 hover:bg-white/10'
-                            }`}
-                          >
-                            <input
-                              type="radio"
-                              name="tipo"
-                              value={tipo.value}
-                              checked={formData.tipo === tipo.value}
-                              onChange={(e) => handleInputChange('tipo', e.target.value)}
-                              className="sr-only"
-                            />
-                            <div className="flex items-center space-x-3">
-                              <tipo.icon className={`w-6 h-6 ${
-                                formData.tipo === tipo.value ? 'text-purple-400' : 'text-gray-400'
-                              }`} />
-                              <div>
-                                <p className={`font-medium ${
-                                  formData.tipo === tipo.value ? 'text-purple-400' : 'text-white'
-                                }`}>
-                                  {tipo.label}
-                                </p>
-                                <p className="text-gray-400 text-sm">{tipo.description}</p>
-                              </div>
-                            </div>
-                          </motion.label>
-                        ))}
-                      </div>
+                      <select
+                        value={formData.tipo}
+                        onChange={(e) => handleInputChange('tipo', e.target.value)}
+                        className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/50 transition-all duration-200"
+                        disabled={loading}
+                      >
+                        <option value="SOFTWARE_A_MEDIDA">Software a Medida</option>
+                        <option value="ECOMMERCE">E-commerce</option>
+                        <option value="LANDING_PAGE">Landing Page</option>
+                        <option value="SISTEMA_WEB">Sistema Web</option>
+                        <option value="APP_MOVIL">App Móvil</option>
+                        <option value="MANTENIMIENTO">Mantenimiento</option>
+                      </select>
                     </div>
 
-                    {/* Cliente Preview */}
-                    {clienteSeleccionado && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4"
-                      >
-                        <div className="flex items-center space-x-3">
-                          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-                            <span className="text-white font-semibold">
-                              {clienteSeleccionado.nombre.charAt(0).toUpperCase()}
-                            </span>
-                          </div>
-                          <div>
-                            <p className="text-blue-400 font-medium">{clienteSeleccionado.nombre}</p>
-                            <p className="text-gray-400 text-sm">{clienteSeleccionado.email}</p>
-                            {clienteSeleccionado.empresa && (
-                              <p className="text-gray-400 text-sm">{clienteSeleccionado.empresa}</p>
-                            )}
-                          </div>
+                    {/* Tips paso 1 */}
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.3 }}
+                      className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4"
+                    >
+                      <div className="flex items-start space-x-3">
+                        <Info className="w-5 h-5 text-blue-400 mt-0.5" />
+                        <div>
+                          <h4 className="text-blue-400 font-medium text-sm">Tip</h4>
+                          <p className="text-gray-300 text-sm">
+                            Un nombre descriptivo ayuda a identificar rápidamente el proyecto en el futuro.
+                          </p>
                         </div>
-                      </motion.div>
-                    )}
+                      </div>
+                    </motion.div>
                   </motion.div>
                 )}
 
-                {/* Step 2: Configuración Financiera */}
                 {currentStep === 2 && (
                   <motion.div
                     key="step2"
@@ -587,69 +512,38 @@ const FormularioProyecto: React.FC<FormularioProyectoProps> = ({
                   >
                     <div className="text-center mb-6">
                       <DollarSign className="w-16 h-16 text-green-400 mx-auto mb-3" />
-                      <h3 className="text-lg font-semibold text-white">Configuración Financiera</h3>
-                      <p className="text-gray-400 text-sm">Moneda, monto y forma de pago</p>
+                      <h3 className="text-lg font-semibold text-white">Detalles Financieros</h3>
+                      <p className="text-gray-400 text-sm">Configura el monto y forma de pago</p>
                     </div>
 
-                    {/* Moneda y Monto */}
-                    <div className="space-y-4">
+                    {/* Monto total */}
+                    <div className="space-y-2">
                       <label className="block text-sm font-medium text-gray-300">
                         <DollarSign className="w-4 h-4 inline mr-2" />
-                        Moneda y Monto Total *
+                        Monto Total *
                       </label>
-                      
-                      <div className="flex space-x-3">
-                        {/* Selector de Moneda */}
-                        <div className="w-32">
-                          <select
-                            value={formData.currency}
-                            onChange={(e) => handleCurrencyChange(e.target.value as 'USD' | 'ARS')}
-                            className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500/50 transition-all duration-200"
-                            disabled={loading}
-                          >
-                            <option value="USD" className="bg-slate-800">🇺🇸 USD</option>
-                            <option value="ARS" className="bg-slate-800">🇦🇷 ARS</option>
-                          </select>
-                        </div>
-                        
-                        {/* Input de Monto */}
-                        <div className="flex-1 relative">
-                          <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 font-medium">
-                            {getCurrencySymbol(formData.currency)}
-                          </span>
-                          <input
-                            type="number"
-                            min="0"
-                            step="1"
-                            value={formData.montoTotal || ''}
-                            onChange={(e) => handleInputChange('montoTotal', parseFloat(e.target.value) || 0)}
-                            onBlur={() => handleBlur('montoTotal')}
-                            className={`w-full pl-12 pr-4 py-3 bg-white/5 border rounded-xl text-white placeholder-gray-400 transition-all duration-200 focus:outline-none focus:ring-2 ${
-                              errors.montoTotal && touched.montoTotal
-                                ? 'border-red-500/50 focus:ring-red-500/20 bg-red-500/5'
-                                : formData.montoTotal && !errors.montoTotal
-                                ? 'border-green-500/50 focus:ring-green-500/20 bg-green-500/5'
-                                : 'border-white/20 focus:ring-green-500/20 focus:border-green-500/50'
-                            }`}
-                            placeholder="0"
-                            disabled={loading}
-                          />
-                          {formData.montoTotal > 0 && !errors.montoTotal && (
-                            <Check className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-green-400" />
-                          )}
-                        </div>
-                        
-                        {/* Botón Convertidor */}
-                        <button
-                          type="button"
-                          onClick={() => setShowCurrencyConverter(!showCurrencyConverter)}
-                          className="px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/20 rounded-xl transition-all duration-200"
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={formData.montoTotal}
+                          onChange={(e) => handleInputChange('montoTotal', e.target.value)}
+                          onBlur={() => handleBlur('montoTotal')}
+                          className={`w-full px-4 py-3 bg-white/5 border rounded-xl text-white placeholder-gray-400 transition-all duration-200 focus:outline-none focus:ring-2 ${
+                            errors.montoTotal && touched.montoTotal
+                              ? 'border-red-500/50 focus:ring-red-500/20 bg-red-500/5'
+                              : formData.montoTotal && !errors.montoTotal
+                              ? 'border-green-500/50 focus:ring-green-500/20 bg-green-500/5'
+                              : 'border-white/20 focus:ring-blue-500/20 focus:border-blue-500/50'
+                          }`}
+                          placeholder="0.00"
                           disabled={loading}
-                        >
-                          <ArrowLeftRight className="w-5 h-5 text-gray-400" />
-                        </button>
+                        />
+                        {formData.montoTotal && !errors.montoTotal && (
+                          <Check className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-green-400" />
+                        )}
                       </div>
-                      
                       <AnimatePresence>
                         {errors.montoTotal && touched.montoTotal && (
                           <motion.p
@@ -663,227 +557,67 @@ const FormularioProyecto: React.FC<FormularioProyectoProps> = ({
                           </motion.p>
                         )}
                       </AnimatePresence>
-                      
-                      {/* Convertidor de Moneda */}
-                      <AnimatePresence>
-                        {showCurrencyConverter && formData.montoTotal > 0 && (
-                          <motion.div
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: 'auto' }}
-                            exit={{ opacity: 0, height: 0 }}
-                            className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4"
-                          >
-                            <p className="text-blue-400 text-sm mb-3 flex items-center">
-                              <Calculator className="w-4 h-4 mr-2" />
-                              Equivalencias:
-                            </p>
-                            <div className="grid grid-cols-2 gap-3 text-sm">
-                              <div className="bg-white/5 rounded-lg p-3">
-                                <span className="text-gray-400">En USD:</span>
-                                <p className="text-white font-medium text-lg">
-                                  {formatCurrency(
-                                    formData.currency === 'USD' 
-                                      ? formData.montoTotal 
-                                      : convertCurrency(formData.montoTotal, formData.currency, 'USD'),
-                                    'USD'
-                                  )}
-                                </p>
-                              </div>
-                              <div className="bg-white/5 rounded-lg p-3">
-                                <span className="text-gray-400">En ARS:</span>
-                                <p className="text-white font-medium text-lg">
-                                  {formatCurrency(
-                                    formData.currency === 'ARS' 
-                                      ? formData.montoTotal 
-                                      : convertCurrency(formData.montoTotal, formData.currency, 'ARS'),
-                                    'ARS'
-                                  )}
-                                </p>
-                              </div>
-                            </div>
-                            <p className="text-xs text-gray-500 mt-3 text-center">
-                              Tasa: 1 USD = {settings.exchangeRate} ARS
-                            </p>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
                     </div>
 
-                    {/* Forma de Pago */}
-                    <div className="space-y-3">
+                    {/* Forma de pago */}
+                    <div className="space-y-2">
                       <label className="block text-sm font-medium text-gray-300">
                         <CreditCard className="w-4 h-4 inline mr-2" />
-                        Forma de Pago
+                        Forma de Pago *
                       </label>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {formasPago.map((forma) => (
-                          <motion.label
-                            key={forma.value}
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
-                            className={`cursor-pointer p-4 rounded-xl border transition-all duration-200 ${
-                              formData.formaPago === forma.value
-                                ? 'border-green-500/50 bg-green-500/10'
-                                : 'border-white/10 bg-white/5 hover:bg-white/10'
-                            }`}
-                          >
-                            <input
-                              type="radio"
-                              name="formaPago"
-                              value={forma.value}
-                              checked={formData.formaPago === forma.value}
-                              onChange={(e) => handleInputChange('formaPago', e.target.value)}
-                              className="sr-only"
-                            />
-                            <div>
-                              <p className={`font-medium ${
-                                formData.formaPago === forma.value ? 'text-green-400' : 'text-white'
-                              }`}>
-                                {forma.label}
-                              </p>
-                              <p className="text-gray-400 text-sm">{forma.description}</p>
-                            </div>
-                          </motion.label>
-                        ))}
-                      </div>
+                      <select
+                        value={formData.formaPago}
+                        onChange={(e) => handleInputChange('formaPago', e.target.value)}
+                        className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/50 transition-all duration-200"
+                        disabled={loading}
+                      >
+                        <option value="PAGO_UNICO">Pago Único</option>
+                        <option value="DOS_CUOTAS">2 Cuotas</option>
+                        <option value="TRES_CUOTAS">3 Cuotas</option>
+                        <option value="MENSUAL">Mensual</option>
+                      </select>
                     </div>
 
-                    {/* Número de Cuotas (solo si es mensual) */}
-                    <AnimatePresence>
-                      {formData.formaPago === 'MENSUAL' && (
-                        <motion.div
-                          initial={{ opacity: 0, height: 0 }}
-                          animate={{ opacity: 1, height: 'auto' }}
-                          exit={{ opacity: 0, height: 0 }}
-                          className="space-y-2"
-                        >
-                          <label className="block text-sm font-medium text-gray-300">
-                            Número de Cuotas
-                          </label>
-                          <input
-                            type="number"
-                            min="1"
-                            max="60"
-                            value={formData.cuotas}
-                            onChange={(e) => handleInputChange('cuotas', parseInt(e.target.value) || 1)}
-                            onBlur={() => handleBlur('cuotas')}
-                            className={`w-full px-4 py-3 bg-white/5 border rounded-xl text-white placeholder-gray-400 transition-all duration-200 focus:outline-none focus:ring-2 ${
-                              errors.cuotas && touched.cuotas
-                                ? 'border-red-500/50 focus:ring-red-500/20 bg-red-500/5'
-                                : 'border-white/20 focus:ring-green-500/20 focus:border-green-500/50'
-                            }`}
-                            placeholder="12"
-                            disabled={loading}
-                          />
-                          <AnimatePresence>
-                            {errors.cuotas && touched.cuotas && (
-                              <motion.p
-                                initial={{ opacity: 0, y: -10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: -10 }}
-                                className="text-red-400 text-sm flex items-center"
-                              >
-                                <AlertTriangle className="w-4 h-4 mr-2" />
-                                {errors.cuotas}
-                              </motion.p>
-                            )}
-                          </AnimatePresence>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-
-                    {/* Calculadora de Cuotas */}
-                    {formData.montoTotal > 0 && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="bg-gradient-to-r from-green-500/10 to-blue-500/10 border border-green-500/20 rounded-xl p-4"
-                      >
-                        <div className="flex items-center justify-between mb-3">
-                          <h4 className="text-green-400 font-medium flex items-center">
-                            <Calculator className="w-4 h-4 mr-2" />
-                            Resumen de Pagos
-                          </h4>
-                          <button
-                            type="button"
-                            onClick={() => setShowCalculator(!showCalculator)}
-                            className="text-green-400 hover:text-green-300 text-sm transition-colors"
-                          >
-                            {showCalculator ? 'Ocultar' : 'Ver detalles'}
-                          </button>
-                        </div>
-                        
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                          <div>
-                            <span className="text-gray-400">Monto total:</span>
-                            <p className="text-white font-medium">
-                              {formatCurrency(formData.montoTotal, formData.currency)}
-                            </p>
-                          </div>
-                          <div>
-                            <span className="text-gray-400">Número de pagos:</span>
-                            <p className="text-white font-medium">
-                              {formData.formaPago === 'DOS_CUOTAS' ? '2' :
-                               formData.formaPago === 'TRES_CUOTAS' ? '3' :
-                               formData.formaPago === 'PAGO_UNICO' ? '1' :
-                               formData.cuotas}
-                            </p>
-                          </div>
-                          <div className="col-span-2">
-                            <span className="text-gray-400">Monto por pago:</span>
-                            <p className="text-green-400 font-medium text-lg">
-                              {formatCurrency(montoPorCuota, formData.currency)}
-                            </p>
-                          </div>
-                        </div>
-
+                    {/* Número de cuotas (si aplica) */}
+                    {formData.formaPago === 'MENSUAL' && (
+                      <div className="space-y-2">
+                        <label className="block text-sm font-medium text-gray-300">
+                          <CreditCard className="w-4 h-4 inline mr-2" />
+                          Número de Cuotas *
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="60"
+                          value={formData.cuotas}
+                          onChange={(e) => handleInputChange('cuotas', parseInt(e.target.value))}
+                          onBlur={() => handleBlur('cuotas')}
+                          className={`w-full px-4 py-3 bg-white/5 border rounded-xl text-white placeholder-gray-400 transition-all duration-200 focus:outline-none focus:ring-2 ${
+                            errors.cuotas && touched.cuotas
+                              ? 'border-red-500/50 focus:ring-red-500/20 bg-red-500/5'
+                              : 'border-white/20 focus:ring-blue-500/20 focus:border-blue-500/50'
+                          }`}
+                          placeholder="6"
+                          disabled={loading}
+                        />
                         <AnimatePresence>
-                          {showCalculator && (
-                            <motion.div
-                              initial={{ opacity: 0, height: 0 }}
-                              animate={{ opacity: 1, height: 'auto' }}
-                              exit={{ opacity: 0, height: 0 }}
-                              className="mt-4 pt-4 border-t border-white/10"
+                          {errors.cuotas && touched.cuotas && (
+                            <motion.p
+                              initial={{ opacity: 0, y: -10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: -10 }}
+                              className="text-red-400 text-sm flex items-center"
                             >
-                              <div className="space-y-2">
-                                {Array.from({ length: formData.formaPago === 'DOS_CUOTAS' ? 2 :
-                                  formData.formaPago === 'TRES_CUOTAS' ? 3 :
-                                  formData.formaPago === 'PAGO_UNICO' ? 1 :
-                                  formData.cuotas || 1 }).map((_, index) => (
-                                  <div key={index} className="flex justify-between items-center py-2 px-3 bg-white/5 rounded-lg">
-                                    <span className="text-gray-400 text-sm">Pago {index + 1}:</span>
-                                    <span className="text-white font-medium">
-                                      {formatCurrency(montoPorCuota, formData.currency)}
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            </motion.div>
+                              <AlertTriangle className="w-4 h-4 mr-2" />
+                              {errors.cuotas}
+                            </motion.p>
                           )}
                         </AnimatePresence>
-                      </motion.div>
+                      </div>
                     )}
-                  </motion.div>
-                )}
 
-                {/* Step 3: Fechas y Finalización */}
-                {currentStep === 3 && (
-                  <motion.div
-                    key="step3"
-                    initial={{ x: 20, opacity: 0 }}
-                    animate={{ x: 0, opacity: 1 }}
-                    exit={{ x: -20, opacity: 0 }}
-                    transition={{ duration: 0.3 }}
-                    className="space-y-6"
-                  >
-                    <div className="text-center mb-6">
-                      <Calendar className="w-16 h-16 text-blue-400 mx-auto mb-3" />
-                      <h3 className="text-lg font-semibold text-white">Fechas del Proyecto</h3>
-                      <p className="text-gray-400 text-sm">Define el cronograma del proyecto</p>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {/* Fecha de Inicio */}
+                    {/* Fechas */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <label className="block text-sm font-medium text-gray-300">
                           <Calendar className="w-4 h-4 inline mr-2" />
@@ -893,16 +627,33 @@ const FormularioProyecto: React.FC<FormularioProyectoProps> = ({
                           type="date"
                           value={formData.fechaInicio}
                           onChange={(e) => handleInputChange('fechaInicio', e.target.value)}
-                          className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/50 transition-all duration-200"
+                          onBlur={() => handleBlur('fechaInicio')}
+                          className={`w-full px-4 py-3 bg-white/5 border rounded-xl text-white transition-all duration-200 focus:outline-none focus:ring-2 ${
+                            errors.fechaInicio && touched.fechaInicio
+                              ? 'border-red-500/50 focus:ring-red-500/20 bg-red-500/5'
+                              : 'border-white/20 focus:ring-blue-500/20 focus:border-blue-500/50'
+                          }`}
                           disabled={loading}
                         />
+                        <AnimatePresence>
+                          {errors.fechaInicio && touched.fechaInicio && (
+                            <motion.p
+                              initial={{ opacity: 0, y: -10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: -10 }}
+                              className="text-red-400 text-sm flex items-center"
+                            >
+                              <AlertTriangle className="w-4 h-4 mr-2" />
+                              {errors.fechaInicio}
+                            </motion.p>
+                          )}
+                        </AnimatePresence>
                       </div>
 
-                      {/* Fecha de Entrega */}
                       <div className="space-y-2">
                         <label className="block text-sm font-medium text-gray-300">
-                          <Clock className="w-4 h-4 inline mr-2" />
-                          Fecha de Entrega Estimada
+                          <Calendar className="w-4 h-4 inline mr-2" />
+                          Fecha de Entrega (opcional)
                         </label>
                         <input
                           type="date"
@@ -914,58 +665,51 @@ const FormularioProyecto: React.FC<FormularioProyectoProps> = ({
                       </div>
                     </div>
 
-                    {/* Resumen Final */}
-                    <motion.div
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.3 }}
-                      className="bg-gradient-to-r from-purple-500/10 to-blue-500/10 border border-purple-500/20 rounded-xl p-6"
-                    >
-                      <h4 className="text-purple-400 font-medium mb-4 flex items-center">
-                        <Star className="w-5 h-5 mr-2" />
-                        Resumen del Proyecto
-                      </h4>
-                      
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                        <div className="space-y-3">
+                    {/* Resumen del proyecto */}
+                    {formData.montoTotal && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.3 }}
+                        className="bg-gradient-to-r from-white/5 to-white/10 rounded-xl p-4 border border-white/10"
+                      >
+                        <h4 className="text-white font-medium text-sm mb-3">Resumen del Proyecto</h4>
+                        <div className="grid grid-cols-2 gap-4 text-sm">
                           <div>
-                            <span className="text-gray-400">Proyecto:</span>
-                            <p className="text-white font-medium">{formData.nombre || 'Sin nombre'}</p>
-                          </div>
-                          <div>
-                            <span className="text-gray-400">Cliente:</span>
-                            <p className="text-white font-medium">{clienteSeleccionado?.nombre || 'Sin cliente'}</p>
-                          </div>
-                          <div>
-                            <span className="text-gray-400">Tipo:</span>
-                            <p className="text-white font-medium">
-                              {tiposProyecto.find(t => t.value === formData.tipo)?.label}
-                            </p>
-                          </div>
-                        </div>
-                        
-                        <div className="space-y-3">
-                          <div>
-                            <span className="text-gray-400">Monto total:</span>
+                            <p className="text-gray-400">Monto Total</p>
                             <p className="text-green-400 font-bold text-lg">
-                              {formatCurrency(formData.montoTotal, formData.currency)}
+                              ${typeof formData.montoTotal === 'string' 
+                                ? parseFloat(formData.montoTotal).toLocaleString() 
+                                : formData.montoTotal.toLocaleString()}
                             </p>
                           </div>
                           <div>
-                            <span className="text-gray-400">Forma de pago:</span>
+                            <p className="text-gray-400">Forma de Pago</p>
                             <p className="text-white font-medium">
-                              {formasPago.find(f => f.value === formData.formaPago)?.label}
+                              {formData.formaPago === 'PAGO_UNICO' && 'Pago Único'}
+                              {formData.formaPago === 'DOS_CUOTAS' && '2 Cuotas'}
+                              {formData.formaPago === 'TRES_CUOTAS' && '3 Cuotas'}
+                              {formData.formaPago === 'MENSUAL' && `${formData.cuotas} Cuotas Mensuales`}
                             </p>
                           </div>
-                          <div>
-                            <span className="text-gray-400">Inicio:</span>
-                            <p className="text-white font-medium">
-                              {new Date(formData.fechaInicio).toLocaleDateString()}
-                            </p>
-                          </div>
+                          {formData.formaPago !== 'PAGO_UNICO' && (
+                            <div className="col-span-2">
+                              <p className="text-gray-400">Monto por Cuota</p>
+                              <p className="text-blue-400 font-medium">
+                                ${Math.round(
+                                  (typeof formData.montoTotal === 'string' 
+                                    ? parseFloat(formData.montoTotal) 
+                                    : formData.montoTotal) / 
+                                  (typeof formData.cuotas === 'string' 
+                                    ? parseInt(formData.cuotas) 
+                                    : formData.cuotas)
+                                ).toLocaleString()}
+                              </p>
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    </motion.div>
+                      </motion.div>
+                    )}
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -974,13 +718,13 @@ const FormularioProyecto: React.FC<FormularioProyectoProps> = ({
 
           {/* Footer */}
           <div className="p-6 border-t border-white/10 bg-white/5">
-            <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex gap-3">
               {currentStep === 1 ? (
                 <>
                   <button
                     type="button"
                     onClick={onClose}
-                    className="flex-1 sm:flex-none px-6 py-3 bg-white/5 hover:bg-white/10 border border-white/20 rounded-xl text-gray-300 hover:text-white transition-all duration-200 font-medium"
+                    className="flex-1 px-6 py-3 bg-white/5 hover:bg-white/10 border border-white/20 rounded-xl text-gray-300 hover:text-white transition-all duration-200 font-medium"
                     disabled={loading}
                   >
                     Cancelar
@@ -991,28 +735,7 @@ const FormularioProyecto: React.FC<FormularioProyectoProps> = ({
                     disabled={!formData.nombre || !formData.clienteId || !!errors.nombre || !!errors.clienteId}
                     whileHover={{ scale: !formData.nombre || !formData.clienteId || !!errors.nombre || !!errors.clienteId ? 1 : 1.02 }}
                     whileTap={{ scale: !formData.nombre || !formData.clienteId || !!errors.nombre || !!errors.clienteId ? 1 : 0.98 }}
-                    className="flex-1 px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 disabled:from-gray-600 disabled:to-gray-700 disabled:opacity-50 text-white rounded-xl transition-all duration-200 font-medium"
-                  >
-                    Continuar
-                  </motion.button>
-                </>
-              ) : currentStep === 2 ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={prevStep}
-                    className="flex-1 sm:flex-none px-6 py-3 bg-white/5 hover:bg-white/10 border border-white/20 rounded-xl text-gray-300 hover:text-white transition-all duration-200 font-medium"
-                    disabled={loading}
-                  >
-                    Volver
-                  </button>
-                  <motion.button
-                    type="button"
-                    onClick={nextStep}
-                    disabled={!formData.montoTotal || formData.montoTotal <= 0 || !!errors.montoTotal}
-                    whileHover={{ scale: !formData.montoTotal || formData.montoTotal <= 0 || !!errors.montoTotal ? 1 : 1.02 }}
-                    whileTap={{ scale: !formData.montoTotal || formData.montoTotal <= 0 || !!errors.montoTotal ? 1 : 0.98 }}
-                    className="flex-1 px-6 py-3 bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 disabled:from-gray-600 disabled:to-gray-700 disabled:opacity-50 text-white rounded-xl transition-all duration-200 font-medium"
+                    className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:from-gray-600 disabled:to-gray-700 disabled:opacity-50 text-white rounded-xl transition-all duration-200 font-medium"
                   >
                     Continuar
                   </motion.button>
@@ -1021,7 +744,7 @@ const FormularioProyecto: React.FC<FormularioProyectoProps> = ({
                 <>
                   <button
                     type="button"
-                    onClick={prevStep}
+                    onClick={() => setCurrentStep(1)}
                     className="flex-1 sm:flex-none px-6 py-3 bg-white/5 hover:bg-white/10 border border-white/20 rounded-xl text-gray-300 hover:text-white transition-all duration-200 font-medium"
                     disabled={loading}
                   >
@@ -1033,7 +756,7 @@ const FormularioProyecto: React.FC<FormularioProyectoProps> = ({
                     disabled={loading || !isFormComplete}
                     whileHover={{ scale: loading || !isFormComplete ? 1 : 1.02 }}
                     whileTap={{ scale: loading || !isFormComplete ? 1 : 0.98 }}
-                    className="flex-1 px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 disabled:from-gray-600 disabled:to-gray-700 disabled:opacity-50 text-white rounded-xl transition-all duration-200 font-medium flex items-center justify-center"
+                    className="flex-1 px-6 py-3 bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 disabled:from-gray-600 disabled:to-gray-700 disabled:opacity-50 text-white rounded-xl transition-all duration-200 font-medium flex items-center justify-center"
                   >
                     {loading ? (
                       <>
@@ -1042,7 +765,7 @@ const FormularioProyecto: React.FC<FormularioProyectoProps> = ({
                       </>
                     ) : (
                       <>
-                        <Star className="w-5 h-5 mr-2" />
+                        <Save className="w-5 h-5 mr-2" />
                         {proyecto ? 'Actualizar Proyecto' : 'Crear Proyecto'}
                       </>
                     )}
@@ -1057,7 +780,4 @@ const FormularioProyecto: React.FC<FormularioProyectoProps> = ({
   )
 }
 
-// Asignar displayName para evitar el warning de ESLint
 FormularioProyecto.displayName = 'FormularioProyecto'
-
-export { FormularioProyecto }

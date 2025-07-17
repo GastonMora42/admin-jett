@@ -1,363 +1,409 @@
-// src/lib/api-client.ts - MEJORADO para funcionar perfectamente con el nuevo middleware
+// src/lib/api-client.ts - API CLIENT CORREGIDO Y MEJORADO
+'use client'
+
+import { useState, useCallback } from 'react'
 import { authUtils } from '@/lib/auth'
 
-let isRefreshing = false;
-let refreshPromise: Promise<boolean> | null = null;
-
-// NUEVA: Función para verificar si el middleware puede leer las cookies
-async function ensureMiddlewareCompatibility(): Promise<boolean> {
-  const tokens = authUtils.getTokens();
-  if (!tokens) {
-    console.log('❌ No tokens available for middleware compatibility check');
-    return false;
-  }
-
-  // Forzar sincronización de cookies para asegurar que el middleware las pueda leer
-  authUtils.forceCookieSync();
-  
-  // Pequeña pausa para que las cookies se propaguen
-  await new Promise(resolve => setTimeout(resolve, 100));
-  
-  console.log('✅ Middleware compatibility ensured');
-  return true;
+interface ApiClientState {
+  loading: boolean
+  error: string | null
 }
 
-// Función helper para hacer requests autenticadas - MEJORADA
-export async function authenticatedFetch(url: string, options: RequestInit = {}) {
-  console.log(`🌐 Making authenticated request to: ${url}`);
-  
-  // Si ya hay un refresh en progreso, esperar a que termine
-  if (isRefreshing && refreshPromise) {
-    console.log('⏳ Esperando refresh en progreso...');
-    const refreshResult = await refreshPromise;
-    if (!refreshResult) {
-      throw new Error('Refresh falló, sesión expirada');
+class ApiClient {
+  private baseUrl: string
+  private state: ApiClientState = {
+    loading: false,
+    error: null
+  }
+  private stateCallbacks: Set<(state: ApiClientState) => void> = new Set()
+
+  constructor() {
+    this.baseUrl = process.env.NEXT_PUBLIC_API_URL || ''
+    if (typeof window !== 'undefined') {
+      console.log('🌐 API Client initialized')
     }
   }
-  
-  // CRÍTICO: Asegurar que tenemos tokens válidos Y que el middleware los puede leer
-  const hasValidTokens = await authUtils.ensureValidTokens();
-  
-  if (!hasValidTokens) {
-    console.log('❌ No valid tokens available after validation');
-    authUtils.logout();
-    throw new Error('No hay autenticación válida disponible');
+
+  // Suscribirse a cambios de estado
+  subscribe(callback: (state: ApiClientState) => void) {
+    this.stateCallbacks.add(callback)
+    return () => this.stateCallbacks.delete(callback)
   }
 
-  // NUEVO: Asegurar compatibilidad con middleware
-  await ensureMiddlewareCompatibility();
-
-  const tokens = authUtils.getTokens();
-  
-  if (!tokens) {
-    console.log('❌ No tokens found after validation');
-    authUtils.logout();
-    throw new Error('No hay token de autenticación');
+  // Notificar cambios de estado
+  private notifyStateChange() {
+    this.stateCallbacks.forEach(callback => callback(this.state))
   }
 
-  const headers = new Headers(options.headers);
-  
-  // CRÍTICO: Múltiples métodos para enviar el token (compatibilidad máxima)
-  headers.set('Authorization', `Bearer ${tokens.idToken}`);
-  headers.set('Content-Type', 'application/json');
-  headers.set('X-Auth-Token', tokens.idToken);
-  
-  // NUEVO: También enviar el accessToken en un header separado por si acaso
-  headers.set('X-Access-Token', tokens.accessToken);
+  // Actualizar estado
+  private setState(updates: Partial<ApiClientState>) {
+    this.state = { ...this.state, ...updates }
+    this.notifyStateChange()
+  }
 
-  console.log(`📡 Sending request with multiple auth methods to: ${url}`, {
-    hasAuthHeader: !!headers.get('Authorization'),
-    hasCustomHeader: !!headers.get('X-Auth-Token'),
-    hasAccessHeader: !!headers.get('X-Access-Token'),
-    tokenLength: tokens.idToken?.length || 0,
-  });
-  
-  // CRÍTICO: Usar credentials: 'include' para asegurar que las cookies se envíen
-  const requestOptions: RequestInit = {
-    ...options,
-    headers,
-    credentials: 'include' // Esto es clave para que las cookies lleguen al middleware
-  };
+  // Obtener headers con autenticación
+  private async getHeaders(includeAuth = true): Promise<Record<string, string>> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    }
 
-  // Primera tentativa
-  let response = await fetch(url, requestOptions);
+    if (includeAuth) {
+      // Asegurar que los tokens sean válidos antes de hacer la request
+      const hasValidTokens = await authUtils.ensureValidTokens()
+      
+      if (hasValidTokens) {
+        const tokens = authUtils.getTokens()
+        if (tokens?.idToken) {
+          // Usar múltiples headers para máxima compatibilidad
+          headers['Authorization'] = `Bearer ${tokens.idToken}`
+          headers['X-Auth-Token'] = tokens.idToken
+          headers['X-Access-Token'] = tokens.accessToken || tokens.idToken
+          
+          console.log('🔐 Request headers set with auth tokens')
+        } else {
+          console.warn('⚠️ No tokens available for authenticated request')
+        }
+      } else {
+        console.warn('⚠️ Failed to ensure valid tokens')
+      }
+    }
 
-  // Si obtenemos 401, intentar refresh UNA sola vez
-  if (response.status === 401) {
-    console.log('🔄 Received 401, attempting token refresh...');
+    return headers
+  }
+
+  // Hacer request con manejo de errores mejorado
+  private async makeRequest<T>(
+    url: string,
+    options: RequestInit = {},
+    showLoading = true
+  ): Promise<T> {
+    const fullUrl = url.startsWith('http') ? url : `${this.baseUrl}${url}`
     
-    // Evitar múltiples refreshes simultáneos
-    if (!isRefreshing) {
-      isRefreshing = true;
-      refreshPromise = authUtils.refreshTokens();
-      
-      try {
-        const refreshed = await refreshPromise;
-        
-        if (refreshed) {
-          console.log('🔄 Retrying request with refreshed token...');
-          
-          // IMPORTANTE: Asegurar compatibilidad DESPUÉS del refresh
-          await ensureMiddlewareCompatibility();
-          
-          // Obtener los nuevos tokens
-          const newTokens = authUtils.getTokens();
-          if (newTokens) {
-            // Actualizar headers con nuevo token
-            headers.set('Authorization', `Bearer ${newTokens.idToken}`);
-            headers.set('X-Auth-Token', newTokens.idToken);
-            headers.set('X-Access-Token', newTokens.accessToken);
-            
-            console.log('🔄 Retrying with refreshed tokens...');
-            
-            // Reintentar la request
-            response = await fetch(url, { 
-              ...options, 
-              headers,
-              credentials: 'include'
-            });
-            
-            if (response.status === 401) {
-              console.log('❌ Still 401 after refresh, logging out');
-              authUtils.logout();
-              throw new Error('Sesión expirada');
-            }
-          } else {
-            console.log('❌ No tokens found after refresh');
-            authUtils.logout();
-            throw new Error('Error obteniendo tokens después del refresh');
-          }
-        } else {
-          console.log('❌ Refresh failed, logging out');
-          authUtils.logout();
-          throw new Error('Sesión expirada');
-        }
-      } finally {
-        isRefreshing = false;
-        refreshPromise = null;
-      }
-    } else {
-      // Si ya hay un refresh en progreso, esperar
-      if (refreshPromise) {
-        const refreshResult = await refreshPromise;
-        if (refreshResult) {
-          await ensureMiddlewareCompatibility();
-          const newTokens = authUtils.getTokens();
-          if (newTokens) {
-            console.log('🔄 Using refreshed token from parallel refresh...');
-            headers.set('Authorization', `Bearer ${newTokens.idToken}`);
-            headers.set('X-Auth-Token', newTokens.idToken);
-            headers.set('X-Access-Token', newTokens.accessToken);
-            
-            return fetch(url, { ...options, headers, credentials: 'include' });
-          }
-        }
-      }
-      
-      authUtils.logout();
-      throw new Error('Sesión expirada');
+    if (showLoading) {
+      this.setState({ loading: true, error: null })
     }
-  }
 
-  // Para otros errores de servidor, manejar apropiadamente
-  if (!response.ok && response.status >= 500) {
-    console.error(`🚨 Server error ${response.status} for ${url}`);
-    throw new Error(`Error del servidor: ${response.status}`);
-  }
-
-  console.log(`✅ Request successful: ${response.status} for ${url}`);
-  return response;
-}
-
-// Hook personalizado mejorado para usar en los componentes
-import { useState, useCallback } from 'react'
-
-export function useApi() {
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const request = useCallback(async (
-    url: string, 
-    options: RequestInit = {},
-    showLoading = true
-  ) => {
     try {
-      if (showLoading) setLoading(true)
-      setError(null)
+      console.log(`📡 Making ${options.method || 'GET'} request to:`, url)
+      
+      const headers = await this.getHeaders(!url.includes('/auth/'))
+      
+      const response = await fetch(fullUrl, {
+        ...options,
+        headers: {
+          ...headers,
+          ...options.headers,
+        },
+      })
 
-      console.log(`🎯 API Request: ${options.method || 'GET'} ${url}`);
+      console.log(`📡 Response status:`, response.status)
 
-      // NUEVO: Pre-check de autenticación para requests críticos
-      if (url.startsWith('/api/') && !url.includes('/auth/')) {
-        const isAuthenticated = authUtils.isAuthenticated();
-        if (!isAuthenticated) {
-          console.log('❌ Pre-flight auth check failed');
-          throw new Error('Sesión expirada - por favor inicia sesión nuevamente');
-        }
+      // Manejar diferentes tipos de respuesta
+      let data: T
+      const contentType = response.headers.get('content-type')
+      
+      if (contentType?.includes('application/json')) {
+        data = await response.json()
+      } else {
+        data = (await response.text()) as unknown as T
       }
 
-      const response = await authenticatedFetch(url, options)
-      
       if (!response.ok) {
-        const contentType = response.headers.get('content-type')
-        let errorData
-        
-        if (contentType && contentType.includes('application/json')) {
-          errorData = await response.json()
-        } else {
-          errorData = { error: `HTTP ${response.status}: ${response.statusText}` }
-        }
-        
-        console.error(`❌ API Error ${response.status} for ${url}:`, errorData);
-        
-        // NUEVO: Manejo específico de errores de autenticación
+        // Manejar errores de autenticación
         if (response.status === 401) {
-          console.log('🔐 401 error - triggering logout');
-          authUtils.logout();
-          throw new Error('Sesión expirada - redirigiendo al login...');
+          console.warn('🔒 Unauthorized request, attempting token refresh...')
+          
+          // Intentar refrescar tokens una vez
+          const refreshSuccess = await authUtils.refreshTokens()
+          
+          if (refreshSuccess) {
+            console.log('✅ Tokens refreshed, retrying request...')
+            // Reintentar la request con tokens nuevos
+            return this.makeRequest(url, options, false)
+          } else {
+            console.error('❌ Token refresh failed, redirecting to login')
+            await authUtils.logout()
+            throw new Error('Sesión expirada. Por favor, inicia sesión nuevamente.')
+          }
         }
+
+        // Manejar otros errores HTTP
+        const errorMessage = (data as any)?.error || 
+                           (data as any)?.message || 
+                           `Error ${response.status}: ${response.statusText}`
         
-        throw new Error(errorData.error || `HTTP ${response.status}`)
+        throw new Error(errorMessage)
       }
 
-      // Verificar si la respuesta tiene contenido JSON
-      const contentType = response.headers.get('content-type')
-      if (contentType && contentType.includes('application/json')) {
-        const data = await response.json()
-        console.log(`✅ API Success: ${options.method || 'GET'} ${url}`);
-        return data
-      } else {
-        // Si no es JSON, devolver texto
-        const text = await response.text()
-        console.log(`✅ API Success (text): ${options.method || 'GET'} ${url}`);
-        return text
-      }
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Error desconocido'
-      console.error(`💥 API Request failed for ${url}:`, errorMessage);
-      setError(errorMessage)
-      throw err
-    } finally {
-      if (showLoading) setLoading(false)
-    }
-  }, [])
+      console.log(`✅ Request successful:`, url)
+      return data
 
-  const get = useCallback((url: string, showLoading = true) => {
-    return request(url, { method: 'GET' }, showLoading)
-  }, [request])
-
-  const post = useCallback((url: string, data: any, showLoading = true) => {
-    return request(url, {
-      method: 'POST',
-      body: JSON.stringify(data)
-    }, showLoading)
-  }, [request])
-
-  const put = useCallback((url: string, data: any, showLoading = true) => {
-    return request(url, {
-      method: 'PUT',
-      body: JSON.stringify(data)
-    }, showLoading)
-  }, [request])
-
-  const del = useCallback((url: string, showLoading = true) => {
-    return request(url, { method: 'DELETE' }, showLoading)
-  }, [request])
-
-  const clearError = useCallback(() => {
-    setError(null)
-  }, [])
-
-  return {
-    loading,
-    error,
-    get,
-    post,
-    put,
-    delete: del,
-    request,
-    clearError
-  }
-}
-
-// NUEVA: Función para hacer requests simples sin autenticación (para endpoints públicos)
-export async function publicFetch(url: string, options: RequestInit = {}) {
-  console.log(`🌍 Making public request to: ${url}`);
-  
-  const headers = new Headers(options.headers);
-  if (!headers.has('Content-Type')) {
-    headers.set('Content-Type', 'application/json');
-  }
-
-  const response = await fetch(url, {
-    ...options,
-    headers
-  });
-
-  console.log(`${response.ok ? '✅' : '❌'} Public request result: ${response.status} for ${url}`);
-  return response;
-}
-
-// NUEVA: Hook para requests públicos
-export function usePublicApi() {
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const request = useCallback(async (
-    url: string, 
-    options: RequestInit = {},
-    showLoading = true
-  ) => {
-    try {
-      if (showLoading) setLoading(true)
-      setError(null)
-
-      const response = await publicFetch(url, options)
+    } catch (error) {
+      console.error(`❌ Request failed for ${url}:`, error)
       
-      if (!response.ok) {
-        const contentType = response.headers.get('content-type')
-        let errorData
-        
-        if (contentType && contentType.includes('application/json')) {
-          errorData = await response.json()
-        } else {
-          errorData = { error: `HTTP ${response.status}: ${response.statusText}` }
-        }
-        
-        throw new Error(errorData.error || `HTTP ${response.status}`)
+      let errorMessage = 'Error de conexión'
+      
+      if (error instanceof Error) {
+        errorMessage = error.message
+      } else if (typeof error === 'string') {
+        errorMessage = error
       }
 
-      const contentType = response.headers.get('content-type')
-      if (contentType && contentType.includes('application/json')) {
-        return await response.json()
-      } else {
-        return await response.text()
-      }
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Error desconocido'
-      setError(errorMessage)
-      throw err
+      this.setState({ error: errorMessage })
+      throw new Error(errorMessage)
+
     } finally {
-      if (showLoading) setLoading(false)
+      if (showLoading) {
+        this.setState({ loading: false })
+      }
     }
-  }, [])
+  }
 
-  const get = useCallback((url: string, showLoading = true) => {
-    return request(url, { method: 'GET' }, showLoading)
-  }, [request])
+  // Métodos HTTP públicos
+  async get<T>(url: string, showLoading = true): Promise<T> {
+    return this.makeRequest<T>(url, { method: 'GET' }, showLoading)
+  }
 
-  const post = useCallback((url: string, data: any, showLoading = true) => {
-    return request(url, {
-      method: 'POST',
-      body: JSON.stringify(data)
-    }, showLoading)
-  }, [request])
+  async post<T>(url: string, data?: any, showLoading = true): Promise<T> {
+    return this.makeRequest<T>(
+      url,
+      {
+        method: 'POST',
+        body: data ? JSON.stringify(data) : undefined,
+      },
+      showLoading
+    )
+  }
 
-  return {
-    loading,
-    error,
-    get,
-    post,
-    request
+  async put<T>(url: string, data?: any, showLoading = true): Promise<T> {
+    return this.makeRequest<T>(
+      url,
+      {
+        method: 'PUT',
+        body: data ? JSON.stringify(data) : undefined,
+      },
+      showLoading
+    )
+  }
+
+  async patch<T>(url: string, data?: any, showLoading = true): Promise<T> {
+    return this.makeRequest<T>(
+      url,
+      {
+        method: 'PATCH',
+        body: data ? JSON.stringify(data) : undefined,
+      },
+      showLoading
+    )
+  }
+
+  async delete<T>(url: string, showLoading = true): Promise<T> {
+    return this.makeRequest<T>(url, { method: 'DELETE' }, showLoading)
+  }
+
+  // Upload de archivos
+  async upload<T>(url: string, formData: FormData, showLoading = true): Promise<T> {
+    const fullUrl = url.startsWith('http') ? url : `${this.baseUrl}${url}`
+    
+    if (showLoading) {
+      this.setState({ loading: true, error: null })
+    }
+
+    try {
+      const tokens = authUtils.getTokens()
+      const headers: Record<string, string> = {}
+      
+      if (tokens?.idToken) {
+        headers['Authorization'] = `Bearer ${tokens.idToken}`
+        headers['X-Auth-Token'] = tokens.idToken
+      }
+
+      const response = await fetch(fullUrl, {
+        method: 'POST',
+        headers,
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || `Error ${response.status}`)
+      }
+
+      return await response.json()
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Error al subir archivo'
+      this.setState({ error: errorMessage })
+      throw new Error(errorMessage)
+
+    } finally {
+      if (showLoading) {
+        this.setState({ loading: false })
+      }
+    }
+  }
+
+  // Limpiar estado de error
+  clearError() {
+    this.setState({ error: null })
+  }
+
+  // Obtener estado actual
+  getState(): ApiClientState {
+    return this.state
   }
 }
+
+// Instancia singleton
+const apiClient = new ApiClient()
+
+// Hook para usar el API client en componentes
+export function useApi() {
+  const [state, setState] = useState<ApiClientState>(apiClient.getState())
+
+  const subscribe = useCallback(() => {
+    return apiClient.subscribe(setState)
+  }, [])
+
+  // Suscribirse a cambios de estado
+  React.useEffect(() => {
+    const unsubscribe = subscribe()
+    return unsubscribe
+  }, [subscribe])
+
+  return {
+    // Estado
+    loading: state.loading,
+    error: state.error,
+    
+    // Métodos HTTP
+    get: apiClient.get.bind(apiClient),
+    post: apiClient.post.bind(apiClient),
+    put: apiClient.put.bind(apiClient),
+    patch: apiClient.patch.bind(apiClient),
+    delete: apiClient.delete.bind(apiClient),
+    upload: apiClient.upload.bind(apiClient),
+    
+    // Utilidades
+    clearError: apiClient.clearError.bind(apiClient),
+  }
+}
+
+// Exportar cliente para uso directo si es necesario
+export { apiClient }
+
+// Hook especializado para operaciones CRUD
+export function useCrud<T>(endpoint: string) {
+  const api = useApi()
+  
+  const create = useCallback(async (data: Partial<T>) => {
+    console.log(`🆕 Creating new item at ${endpoint}:`, data)
+    return api.post<T>(endpoint, data)
+  }, [api, endpoint])
+
+  const update = useCallback(async (id: string, data: Partial<T>) => {
+    console.log(`✏️ Updating item ${id} at ${endpoint}:`, data)
+    return api.put<T>(`${endpoint}/${id}`, data)
+  }, [api, endpoint])
+
+  const remove = useCallback(async (id: string) => {
+    console.log(`🗑️ Deleting item ${id} at ${endpoint}`)
+    return api.delete(`${endpoint}/${id}`)
+  }, [api, endpoint])
+
+  const getById = useCallback(async (id: string) => {
+    console.log(`🔍 Getting item ${id} from ${endpoint}`)
+    return api.get<T>(`${endpoint}/${id}`)
+  }, [api, endpoint])
+
+  const getAll = useCallback(async (params?: Record<string, any>) => {
+    const queryString = params ? '?' + new URLSearchParams(params).toString() : ''
+    console.log(`📋 Getting all items from ${endpoint}${queryString}`)
+    return api.get<T[]>(`${endpoint}${queryString}`)
+  }, [api, endpoint])
+
+  return {
+    create,
+    update,
+    remove,
+    getById,
+    getAll,
+    loading: api.loading,
+    error: api.error,
+    clearError: api.clearError
+  }
+}
+
+// Funciones de utilidad para requests específicos
+export const apiUtils = {
+  // Autenticación
+  login: async (email: string, password: string) => {
+    console.log('🔐 Attempting login for:', email)
+    return apiClient.post('/api/auth/login', { email, password })
+  },
+
+  register: async (userData: any) => {
+    console.log('📝 Attempting registration for:', userData.email)
+    return apiClient.post('/api/auth/register', userData)
+  },
+
+  logout: async () => {
+    console.log('🚪 Logging out...')
+    return apiClient.post('/api/auth/logout')
+  },
+
+  // Dashboard
+  getDashboard: async () => {
+    console.log('📊 Getting dashboard data')
+    return apiClient.get('/api/dashboard')
+  },
+
+  // Configuración
+  getSettings: async () => {
+    console.log('⚙️ Getting settings')
+    return apiClient.get('/api/configuracion')
+  },
+
+  updateSettings: async (settings: any) => {
+    console.log('⚙️ Updating settings')
+    return apiClient.put('/api/configuracion', settings)
+  },
+
+  // Notificaciones
+  getNotifications: async () => {
+    console.log('🔔 Getting notifications')
+    return apiClient.get('/api/notificaciones')
+  },
+
+  // Estadísticas
+  getStats: async () => {
+    console.log('📈 Getting statistics')
+    return apiClient.get('/api/estadisticas')
+  },
+
+  // Exportar datos
+  exportData: async (type: string, format = 'json') => {
+    console.log(`📤 Exporting ${type} data as ${format}`)
+    return apiClient.get(`/api/exportar?tipo=${type}&formato=${format}`)
+  }
+}
+
+// Tipos de utilidad
+export interface ApiResponse<T> {
+  data?: T
+  error?: string
+  message?: string
+}
+
+export interface PaginatedResponse<T> {
+  data: T[]
+  pagination: {
+    page: number
+    limit: number
+    total: number
+    totalPages: number
+  }
+}
+
+// Import React para el useEffect en useApi
+import React from 'react'
