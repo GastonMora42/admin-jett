@@ -64,7 +64,8 @@ export default function FacturacionPage() {
 
   useEffect(() => {
     fetchFacturacionData()
-    return () => api.cleanup()
+    // No es necesario limpiar nada aquí porque 'api.cleanup' no existe
+    // y no hay efectos secundarios que limpiar
   }, [periodo])
 
   const fetchFacturacionData = async () => {

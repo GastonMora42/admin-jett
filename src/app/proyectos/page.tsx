@@ -73,7 +73,8 @@ export default function ProyectosPage() {
 
   useEffect(() => {
     loadData()
-    return () => api.cleanup()
+    // No es necesario limpiar nada porque 'api.cleanup' no existe
+    // y no hay recursos que limpiar aquí.
   }, [])
 
   const loadData = async () => {
@@ -648,7 +649,7 @@ const ProyectoCard: React.FC<ProyectoCardProps> = React.memo(({
 }) => {
   const [showMenu, setShowMenu] = useState(false)
   // Después de la definición del componente ProyectoCard
-ProyectoCard.displayName = 'ProyectoCard'
+ ProyectoCard.displayName = 'ProyectoCard'
 
   const getEstadoIcon = (estado: EstadoProyecto) => {
     switch (estado) {

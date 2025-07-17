@@ -86,7 +86,8 @@ export default function AnalyticsPage() {
 
   useEffect(() => {
     fetchAnalyticsData()
-    return () => api.cleanup()
+    // No es necesario limpiar nada porque 'api.cleanup' no existe
+    // Si necesitas cancelar peticiones, implementa lógica aquí
   }, [timeframe])
 
   const fetchAnalyticsData = async () => {

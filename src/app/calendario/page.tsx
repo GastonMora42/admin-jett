@@ -68,7 +68,7 @@ export default function CalendarioPage() {
 
   useEffect(() => {
     loadCalendarData()
-    return () => api.cleanup()
+    // No es necesario limpiar nada aquí porque 'api.cleanup' no existe
   }, [])
 
   useEffect(() => {
