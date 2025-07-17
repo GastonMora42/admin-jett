@@ -1,7 +1,7 @@
-// src/app/dashboard/page.tsx - DASHBOARD MEJORADO CON DATOS REALES
+// src/app/dashboard/page.tsx - CORREGIDO
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { 
   DollarSign, 
@@ -27,6 +27,19 @@ import { MetricCard } from '@/components/MetricCard'
 import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { useApi } from '@/lib/api-client'
 
+// ✅ SOLUCIÓN: Definir interfaces más específicas
+interface DashboardApiResponse {
+  totalFacturado?: number
+  pendienteCobro?: number
+  proyectosActivos?: number
+  clientesActivos?: number
+  facturacionMes?: number
+  pagosVencidos?: number
+  tendenciaFacturacion?: number
+  proyectosCompletados?: number
+  [key: string]: any // Para propiedades adicionales
+}
+
 interface DashboardData {
   totalFacturado: number
   pendienteCobro: number
@@ -43,9 +56,17 @@ interface DashboardData {
   tasaExito: number
   ingresoPromedioPorProyecto: number
   proyectosPorVencer: number
-  actividad: any[]
-  proyectosPorEstado: any[]
-  facturacionPorMes: any[]
+  actividad: ActivityItem[]
+  proyectosPorEstado: Array<{
+    estado: string
+    cantidad: number
+    color: string
+  }>
+  facturacionPorMes: Array<{
+    mes: string
+    monto: number
+    proyectos: number
+  }>
   clientesMasActivos: any[]
   pagosProximosVencer: any[]
 }
@@ -91,9 +112,15 @@ export default function DashboardPage() {
         api.get('/api/pagos')
       ])
 
+      // ✅ SOLUCIÓN: Asegurar que las respuestas sean arrays
       const clientes = Array.isArray(clientesResponse) ? clientesResponse : []
       const proyectos = Array.isArray(proyectosResponse) ? proyectosResponse : []
       const pagos = Array.isArray(pagosResponse) ? pagosResponse : []
+      
+      // ✅ SOLUCIÓN: Asegurar que dashboardResponse sea un objeto válido
+      const dashboardData: DashboardApiResponse = dashboardResponse && typeof dashboardResponse === 'object' && !Array.isArray(dashboardResponse)
+        ? dashboardResponse as DashboardApiResponse
+        : {}
 
       // Calcular métricas adicionales
       const hoy = new Date()
@@ -198,9 +225,17 @@ export default function DashboardPage() {
         })
       }
 
-      // Combinar datos del dashboard con datos calculados
+      // ✅ SOLUCIÓN: Crear el objeto sin spread, usando valores por defecto
       const enhancedData: DashboardData = {
-        ...dashboardResponse,
+        // Datos de la API (con valores por defecto)
+        totalFacturado: dashboardData.totalFacturado ?? totalFacturado,
+        pendienteCobro: dashboardData.pendienteCobro ?? pagos
+          .filter((p: any) => p.estadoPago === 'PENDIENTE' || p.estadoPago === 'VENCIDO')
+          .reduce((sum: number, p: any) => sum + (p.montoCuota || 0), 0),
+        facturacionMes: dashboardData.facturacionMes ?? 0,
+        tendenciaFacturacion: dashboardData.tendenciaFacturacion ?? 0,
+        
+        // Datos calculados
         proyectosEnPausa,
         nuevosClientesMes,
         pagosPendientes,
@@ -473,6 +508,9 @@ export default function DashboardPage() {
   )
 }
 
+// Resto de componentes siguen igual...
+// (FacturacionChart, ActividadReciente, EstadoProyectos, etc.)
+
 // Componente de gráfico de facturación
 const FacturacionChart: React.FC<{ data: any[] }> = ({ data }) => {
   const maxValue = Math.max(...data.map(d => d.monto), 1)
@@ -629,7 +667,7 @@ const ActividadReciente: React.FC<{ actividad: ActivityItem[] }> = ({ actividad 
 }
 
 // Componente de estado de proyectos
-const EstadoProyectos: React.FC<{ data: any[] }> = ({ data }) => {
+const EstadoProyectos: React.FC<{ data: Array<{estado: string, cantidad: number, color: string}> }> = ({ data }) => {
   const total = data.reduce((sum, item) => sum + item.cantidad, 0)
 
   const getColorClass = (color: string) => {
