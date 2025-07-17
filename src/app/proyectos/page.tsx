@@ -1,7 +1,4 @@
-// =====================================================
-// PÁGINA DE PROYECTOS CORREGIDA - src/app/proyectos/page.tsx
-// =====================================================
-
+// src/app/proyectos/page.tsx - VERSIÓN RESPONSIVE OPTIMIZADA
 'use client'
 
 import React, { useState, useEffect, useMemo } from 'react'
@@ -32,15 +29,14 @@ import {
   MapPin,
   Target,
   Zap,
-  Star
+  Star,
+  Menu
 } from 'lucide-react'
 import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { EmptyState } from '@/components/EmptyState'
 import { FormularioProyecto } from '@/components/FormularioProyecto'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { useApi } from '@/lib/api-client'
-
-// Importar tipos correctos de types/index.ts
 import type { 
   Proyecto as ProyectoType, 
   Cliente as ClienteType,
@@ -51,19 +47,10 @@ import type {
   EstadoPago 
 } from '@/types/index'
 
-// Usar los tipos importados
 interface Proyecto extends ProyectoType {
   progreso?: number
 }
-
 interface Cliente extends ClienteType {}
-
-interface Pago {
-  id: string
-  montoCuota: number
-  fechaVencimiento: string
-  estadoPago: string
-}
 
 export default function ProyectosPage() {
   const [proyectos, setProyectos] = useState<Proyecto[]>([])
@@ -74,18 +61,19 @@ export default function ProyectosPage() {
   const [filtroCliente, setFiltroCliente] = useState<string>('todos')
   const [showForm, setShowForm] = useState(false)
   const [editingProyecto, setEditingProyecto] = useState<Proyecto | null>(null)
-  const [viewingProyecto] = useState<Proyecto | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [proyectoToDelete, setProyectoToDelete] = useState<Proyecto | null>(null)
   const [selectedProyectos, setSelectedProyectos] = useState<string[]>([])
   const [vista, setVista] = useState<'cards' | 'table' | 'kanban'>('cards')
   const [sortBy, setSortBy] = useState<'fecha' | 'monto' | 'nombre' | 'estado'>('fecha')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  const [showMobileFilters, setShowMobileFilters] = useState(false)
 
   const api = useApi()
 
   useEffect(() => {
     loadData()
+    return () => api.cleanup()
   }, [])
 
   const loadData = async () => {
@@ -108,7 +96,6 @@ export default function ProyectosPage() {
       setShowForm(false)
     } catch (error) {
       console.error('Error:', error)
-      alert(error instanceof Error ? error.message : 'Error al crear proyecto')
     }
   }
 
@@ -121,7 +108,6 @@ export default function ProyectosPage() {
       setEditingProyecto(null)
     } catch (error) {
       console.error('Error:', error)
-      alert(error instanceof Error ? error.message : 'Error al actualizar proyecto')
     }
   }
 
@@ -140,7 +126,6 @@ export default function ProyectosPage() {
       setProyectoToDelete(null)
     } catch (error) {
       console.error('Error:', error)
-      alert(error instanceof Error ? error.message : 'Error al eliminar proyecto')
     }
   }
 
@@ -150,11 +135,10 @@ export default function ProyectosPage() {
       await loadData()
     } catch (error) {
       console.error('Error:', error)
-      alert(error instanceof Error ? error.message : 'Error al actualizar estado')
     }
   }
 
-  // Filtros y ordenamiento mejorados
+  // Filtros y ordenamiento optimizados
   const filteredAndSortedProyectos = useMemo(() => {
     let filtered = proyectos.filter(proyecto => {
       const matchesSearch = proyecto.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -168,7 +152,6 @@ export default function ProyectosPage() {
       return matchesSearch && matchesEstado && matchesTipo && matchesCliente
     })
 
-    // Ordenamiento
     filtered.sort((a, b) => {
       let aValue: any, bValue: any
       
@@ -212,7 +195,6 @@ export default function ProyectosPage() {
     const totalFacturado = proyectos.reduce((sum, p) => sum + p.montoTotal, 0)
     const promedioProyecto = total > 0 ? totalFacturado / total : 0
     
-    // Proyectos con retraso (fecha entrega pasada y no completados)
     const hoy = new Date()
     const conRetraso = proyectos.filter(p => 
       p.fechaEntrega && 
@@ -265,20 +247,19 @@ export default function ProyectosPage() {
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="space-y-6"
+      className="space-y-4 lg:space-y-6 p-2 sm:p-4 lg:p-6"
     >
-      {/* Header mejorado */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+      {/* Header mejorado para móvil */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-white">Proyectos</h1>
-          <p className="text-gray-400 mt-1">
+          <h1 className="text-2xl sm:text-3xl font-bold text-white">Proyectos</h1>
+          <p className="text-gray-400 mt-1 text-sm sm:text-base">
             Gestiona todos tus proyectos ({filteredAndSortedProyectos.length} de {proyectos.length})
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          {/* Indicador de loading */}
+        <div className="flex items-center gap-2 sm:gap-3">
           {api.loading && (
-            <div className="flex items-center space-x-2 px-3 py-2 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+            <div className="hidden sm:flex items-center space-x-2 px-3 py-2 bg-blue-500/10 border border-blue-500/30 rounded-lg">
               <div className="w-4 h-4 border-2 border-blue-400/20 border-t-blue-400 rounded-full animate-spin" />
               <span className="text-blue-400 text-sm">Sincronizando...</span>
             </div>
@@ -286,101 +267,102 @@ export default function ProyectosPage() {
           
           <button
             onClick={loadData}
-            className="btn-secondary"
+            className="btn-secondary p-2 sm:px-4 sm:py-2"
             disabled={api.loading}
           >
-            <RefreshCw className={`w-4 h-4 mr-2 ${api.loading ? 'animate-spin' : ''}`} />
-            Actualizar
+            <RefreshCw className={`w-4 h-4 ${api.loading ? 'animate-spin' : ''} sm:mr-2`} />
+            <span className="hidden sm:inline">Actualizar</span>
           </button>
           
-          <button className="btn-secondary">
-            <Download className="w-4 h-4 mr-2" />
-            Exportar
+          <button className="btn-secondary p-2 sm:px-4 sm:py-2 hidden sm:flex">
+            <Download className="w-4 h-4 sm:mr-2" />
+            <span className="hidden sm:inline">Exportar</span>
           </button>
           
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={() => setShowForm(true)}
-            className="btn-primary"
+            className="btn-primary px-3 py-2 sm:px-4 sm:py-2"
             disabled={api.loading}
           >
-            <Plus className="w-4 h-4 mr-2" />
-            Nuevo Proyecto
+            <Plus className="w-4 h-4 sm:mr-2" />
+            <span className="hidden sm:inline">Nuevo Proyecto</span>
           </motion.button>
         </div>
       </div>
 
-      {/* Estadísticas mejoradas */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
-        <motion.div whileHover={{ scale: 1.02 }} className="card p-4 text-center">
-          <FolderOpen className="w-6 h-6 text-blue-400 mx-auto mb-2" />
-          <p className="text-2xl font-bold text-white">{estadisticas.total}</p>
+      {/* Estadísticas responsive */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 sm:gap-4">
+        <motion.div whileHover={{ scale: 1.02 }} className="card p-3 sm:p-4 text-center">
+          <FolderOpen className="w-5 h-5 sm:w-6 sm:h-6 text-blue-400 mx-auto mb-2" />
+          <p className="text-lg sm:text-2xl font-bold text-white">{estadisticas.total}</p>
           <p className="text-gray-400 text-xs">Total</p>
         </motion.div>
         
-        <motion.div whileHover={{ scale: 1.02 }} className="card p-4 text-center">
-          <PlayCircle className="w-6 h-6 text-blue-400 mx-auto mb-2" />
-          <p className="text-2xl font-bold text-blue-400">{estadisticas.enDesarrollo}</p>
+        <motion.div whileHover={{ scale: 1.02 }} className="card p-3 sm:p-4 text-center">
+          <PlayCircle className="w-5 h-5 sm:w-6 sm:h-6 text-blue-400 mx-auto mb-2" />
+          <p className="text-lg sm:text-2xl font-bold text-blue-400">{estadisticas.enDesarrollo}</p>
           <p className="text-gray-400 text-xs">En Desarrollo</p>
         </motion.div>
         
-        <motion.div whileHover={{ scale: 1.02 }} className="card p-4 text-center">
-          <CheckCircle className="w-6 h-6 text-green-400 mx-auto mb-2" />
-          <p className="text-2xl font-bold text-green-400">{estadisticas.completados}</p>
+        <motion.div whileHover={{ scale: 1.02 }} className="card p-3 sm:p-4 text-center">
+          <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-green-400 mx-auto mb-2" />
+          <p className="text-lg sm:text-2xl font-bold text-green-400">{estadisticas.completados}</p>
           <p className="text-gray-400 text-xs">Completados</p>
         </motion.div>
         
-        <motion.div whileHover={{ scale: 1.02 }} className="card p-4 text-center">
-          <PauseCircle className="w-6 h-6 text-yellow-400 mx-auto mb-2" />
-          <p className="text-2xl font-bold text-yellow-400">{estadisticas.enPausa}</p>
+        <motion.div whileHover={{ scale: 1.02 }} className="card p-3 sm:p-4 text-center">
+          <PauseCircle className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-400 mx-auto mb-2" />
+          <p className="text-lg sm:text-2xl font-bold text-yellow-400">{estadisticas.enPausa}</p>
           <p className="text-gray-400 text-xs">En Pausa</p>
         </motion.div>
         
-        <motion.div whileHover={{ scale: 1.02 }} className="card p-4 text-center">
-          <DollarSign className="w-6 h-6 text-green-400 mx-auto mb-2" />
-          <p className="text-xl font-bold text-green-400">
+        <motion.div whileHover={{ scale: 1.02 }} className="card p-3 sm:p-4 text-center">
+          <DollarSign className="w-5 h-5 sm:w-6 sm:h-6 text-green-400 mx-auto mb-2" />
+          <p className="text-sm sm:text-xl font-bold text-green-400">
             ${estadisticas.totalFacturado.toLocaleString()}
           </p>
           <p className="text-gray-400 text-xs">Facturado</p>
         </motion.div>
         
-        <motion.div whileHover={{ scale: 1.02 }} className="card p-4 text-center">
-          <Target className="w-6 h-6 text-purple-400 mx-auto mb-2" />
-          <p className="text-xl font-bold text-purple-400">
+        <motion.div whileHover={{ scale: 1.02 }} className="card p-3 sm:p-4 text-center">
+          <Target className="w-5 h-5 sm:w-6 sm:h-6 text-purple-400 mx-auto mb-2" />
+          <p className="text-sm sm:text-xl font-bold text-purple-400">
             ${estadisticas.promedioProyecto.toLocaleString()}
           </p>
           <p className="text-gray-400 text-xs">Promedio</p>
         </motion.div>
         
-        <motion.div whileHover={{ scale: 1.02 }} className="card p-4 text-center">
-          <Zap className="w-6 h-6 text-green-400 mx-auto mb-2" />
-          <p className="text-2xl font-bold text-green-400">{estadisticas.tasaExito}%</p>
+        <motion.div whileHover={{ scale: 1.02 }} className="card p-3 sm:p-4 text-center">
+          <Zap className="w-5 h-5 sm:w-6 sm:h-6 text-green-400 mx-auto mb-2" />
+          <p className="text-lg sm:text-2xl font-bold text-green-400">{estadisticas.tasaExito}%</p>
           <p className="text-gray-400 text-xs">Tasa Éxito</p>
         </motion.div>
         
-        <motion.div whileHover={{ scale: 1.02 }} className={`card p-4 text-center ${
+        <motion.div whileHover={{ scale: 1.02 }} className={`card p-3 sm:p-4 text-center ${
           estadisticas.conRetraso > 0 ? 'border-red-500/30 bg-red-500/5' : ''
         }`}>
-          <AlertCircle className={`w-6 h-6 mx-auto mb-2 ${
+          <AlertCircle className={`w-5 h-5 sm:w-6 sm:h-6 mx-auto mb-2 ${
             estadisticas.conRetraso > 0 ? 'text-red-400' : 'text-gray-400'
           }`} />
-          <p className={`text-2xl font-bold ${
+          <p className={`text-lg sm:text-2xl font-bold ${
             estadisticas.conRetraso > 0 ? 'text-red-400' : 'text-gray-400'
           }`}>{estadisticas.conRetraso}</p>
           <p className="text-gray-400 text-xs">Con Retraso</p>
         </motion.div>
       </div>
 
-      {/* Filtros y búsqueda mejorados */}
-      <div className="card p-6">
-        <div className="flex flex-col lg:flex-row gap-4">
+      {/* Filtros responsive */}
+      <div className="card p-4">
+        {/* Desktop filters */}
+        <div className="hidden lg:flex flex-col lg:flex-row gap-4">
           <div className="flex-1 grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="relative">
               <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
-                placeholder="Buscar proyectos, clientes..."
+                placeholder="Buscar proyectos..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="input-glass pl-10 w-full"
@@ -428,7 +410,6 @@ export default function ProyectosPage() {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Ordenamiento */}
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as any)}
@@ -448,7 +429,6 @@ export default function ProyectosPage() {
               {sortOrder === 'asc' ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
             </button>
 
-            {/* Vista */}
             <div className="flex bg-white/5 rounded-lg p-1">
               <button
                 onClick={() => setVista('cards')}
@@ -466,16 +446,85 @@ export default function ProyectosPage() {
               >
                 <List className="w-4 h-4" />
               </button>
-              <button
-                onClick={() => setVista('kanban')}
-                className={`px-3 py-1 rounded text-sm transition-colors ${
-                  vista === 'kanban' ? 'bg-white/10 text-white' : 'text-gray-400'
-                }`}
-              >
-                <MapPin className="w-4 h-4" />
-              </button>
             </div>
           </div>
+        </div>
+
+        {/* Mobile filters */}
+        <div className="lg:hidden">
+          <div className="flex items-center justify-between mb-4">
+            <div className="relative flex-1 mr-4">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Buscar proyectos..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="input-glass pl-10 w-full"
+              />
+            </div>
+            <button
+              onClick={() => setShowMobileFilters(!showMobileFilters)}
+              className="btn-secondary"
+            >
+              <Menu className="w-4 h-4" />
+            </button>
+          </div>
+
+          {showMobileFilters && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="space-y-3"
+            >
+              <select
+                value={filtroEstado}
+                onChange={(e) => setFiltroEstado(e.target.value)}
+                className="input-glass w-full"
+              >
+                <option value="todos">Todos los estados</option>
+                <option value="EN_DESARROLLO">En Desarrollo</option>
+                <option value="COMPLETADO">Completado</option>
+                <option value="EN_PAUSA">En Pausa</option>
+                <option value="CANCELADO">Cancelado</option>
+              </select>
+              
+              <select
+                value={filtroTipo}
+                onChange={(e) => setFiltroTipo(e.target.value)}
+                className="input-glass w-full"
+              >
+                <option value="todos">Todos los tipos</option>
+                <option value="SOFTWARE_A_MEDIDA">Software a Medida</option>
+                <option value="ECOMMERCE">E-commerce</option>
+                <option value="LANDING_PAGE">Landing Page</option>
+                <option value="SISTEMA_WEB">Sistema Web</option>
+                <option value="APP_MOVIL">App Móvil</option>
+                <option value="MANTENIMIENTO">Mantenimiento</option>
+              </select>
+
+              <div className="flex gap-2">
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as any)}
+                  className="input-glass flex-1"
+                >
+                  <option value="fecha">Por fecha</option>
+                  <option value="monto">Por monto</option>
+                  <option value="nombre">Por nombre</option>
+                  <option value="estado">Por estado</option>
+                </select>
+                
+                <button
+                  onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+                  className="btn-secondary px-3"
+                >
+                  {sortOrder === 'asc' ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+                </button>
+              </div>
+            </motion.div>
+          )}
         </div>
         
         {selectedProyectos.length > 0 && (
@@ -484,16 +533,16 @@ export default function ProyectosPage() {
               {selectedProyectos.length} proyectos seleccionados
             </span>
             <div className="flex items-center space-x-2">
-              <button className="btn-secondary text-yellow-400">
-                <PauseCircle className="w-4 h-4 mr-2" />
+              <button className="btn-secondary text-yellow-400 text-sm px-3 py-1">
+                <PauseCircle className="w-4 h-4 mr-1" />
                 Pausar
               </button>
-              <button className="btn-secondary text-green-400">
-                <CheckCircle className="w-4 h-4 mr-2" />
+              <button className="btn-secondary text-green-400 text-sm px-3 py-1">
+                <CheckCircle className="w-4 h-4 mr-1" />
                 Completar
               </button>
-              <button className="btn-secondary text-red-400">
-                <Trash2 className="w-4 h-4 mr-2" />
+              <button className="btn-secondary text-red-400 text-sm px-3 py-1">
+                <Trash2 className="w-4 h-4 mr-1" />
                 Eliminar
               </button>
             </div>
@@ -501,7 +550,7 @@ export default function ProyectosPage() {
         )}
       </div>
 
-      {/* Lista de proyectos */}
+      {/* Lista de proyectos responsive */}
       {filteredAndSortedProyectos.length === 0 ? (
         <EmptyState
           icon={FolderOpen}
@@ -522,8 +571,8 @@ export default function ProyectosPage() {
             }
           }}
         />
-      ) : vista === 'cards' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
           <AnimatePresence>
             {filteredAndSortedProyectos.map((proyecto, index) => (
               <ProyectoCard
@@ -546,13 +595,9 @@ export default function ProyectosPage() {
             ))}
           </AnimatePresence>
         </div>
-      ) : (
-        <div className="card p-6 text-center">
-          <p className="text-gray-400">Vista de tabla y kanban próximamente</p>
-        </div>
       )}
 
-      {/* Formulario de proyecto - CORREGIDO */}
+      {/* Formulario de proyecto */}
       <FormularioProyecto
         isOpen={showForm || !!editingProyecto}
         onClose={() => {
@@ -560,7 +605,7 @@ export default function ProyectosPage() {
           setEditingProyecto(null)
         }}
         onSubmit={editingProyecto ? handleEditProyecto : handleCreateProyecto}
-        proyecto={editingProyecto} // Ahora es del tipo correcto
+        proyecto={editingProyecto}
         clientes={clientes}
         title={editingProyecto ? 'Editar Proyecto' : 'Nuevo Proyecto'}
       />
@@ -580,7 +625,7 @@ export default function ProyectosPage() {
   )
 }
 
-// Componente de tarjeta de proyecto mejorado
+// Componente de tarjeta responsive optimizado
 interface ProyectoCardProps {
   proyecto: Proyecto
   index: number
@@ -592,7 +637,7 @@ interface ProyectoCardProps {
   isSelected: boolean
 }
 
-const ProyectoCard: React.FC<ProyectoCardProps> = ({
+const ProyectoCard: React.FC<ProyectoCardProps> = React.memo(({
   proyecto,
   index,
   onEdit,
@@ -605,11 +650,11 @@ const ProyectoCard: React.FC<ProyectoCardProps> = ({
   
   const getEstadoIcon = (estado: EstadoProyecto) => {
     switch (estado) {
-      case 'EN_DESARROLLO': return <PlayCircle className="w-4 h-4" />
-      case 'COMPLETADO': return <CheckCircle className="w-4 h-4" />
-      case 'EN_PAUSA': return <PauseCircle className="w-4 h-4" />
-      case 'CANCELADO': return <AlertCircle className="w-4 h-4" />
-      default: return <Clock className="w-4 h-4" />
+      case 'EN_DESARROLLO': return <PlayCircle className="w-3 h-3 sm:w-4 sm:h-4" />
+      case 'COMPLETADO': return <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4" />
+      case 'EN_PAUSA': return <PauseCircle className="w-3 h-3 sm:w-4 sm:h-4" />
+      case 'CANCELADO': return <AlertCircle className="w-3 h-3 sm:w-4 sm:h-4" />
+      default: return <Clock className="w-3 h-3 sm:w-4 sm:h-4" />
     }
   }
 
@@ -639,7 +684,6 @@ const ProyectoCard: React.FC<ProyectoCardProps> = ({
   const totalPagos = proyecto.pagos?.length || 0
   const progreso = totalPagos > 0 ? (pagosPagados / totalPagos) * 100 : 0
 
-  // Verificar si está retrasado
   const esRetrasado = proyecto.fechaEntrega && 
     new Date(proyecto.fechaEntrega) < new Date() && 
     proyecto.estadoProyecto !== 'COMPLETADO'
@@ -649,9 +693,9 @@ const ProyectoCard: React.FC<ProyectoCardProps> = ({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -20 }}
-      transition={{ delay: index * 0.05 }}
-      whileHover={{ y: -4, scale: 1.02 }}
-      className={`card relative group cursor-pointer transition-all hover:shadow-2xl ${
+      transition={{ delay: index * 0.02 }}
+      whileHover={{ y: -2, scale: 1.01 }}
+      className={`card relative group cursor-pointer transition-all hover:shadow-xl ${
         isSelected ? 'ring-2 ring-blue-500 bg-blue-500/5' : ''
       } ${esRetrasado ? 'border-red-500/30 bg-red-500/5' : ''}`}
     >
@@ -659,19 +703,19 @@ const ProyectoCard: React.FC<ProyectoCardProps> = ({
       {esRetrasado && (
         <div className="absolute top-2 right-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full flex items-center space-x-1">
           <AlertCircle className="w-3 h-3" />
-          <span>Retrasado</span>
+          <span className="hidden sm:inline">Retrasado</span>
         </div>
       )}
 
       {proyecto.estadoProyecto === 'COMPLETADO' && (
         <div className="absolute top-2 left-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full flex items-center space-x-1">
           <Star className="w-3 h-3" />
-          <span>Completado</span>
+          <span className="hidden sm:inline">Completado</span>
         </div>
       )}
 
       {/* Checkbox y menú */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-3 sm:mb-4">
         <input
           type="checkbox"
           checked={isSelected}
@@ -687,99 +731,99 @@ const ProyectoCard: React.FC<ProyectoCardProps> = ({
             e.stopPropagation()
             setShowMenu(!showMenu)
           }}
-          className="p-2 rounded-lg bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity"
+          className="p-1 sm:p-2 rounded-lg bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity"
         >
-          <MoreVertical className="w-4 h-4 text-gray-400" />
+          <MoreVertical className="w-3 h-3 sm:w-4 sm:h-4 text-gray-400" />
         </button>
 
         {showMenu && (
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="absolute right-0 top-12 bg-black/90 backdrop-blur-xl border border-white/20 rounded-lg py-2 z-10 min-w-[160px]"
+            className="absolute right-0 top-12 bg-black/90 backdrop-blur-xl border border-white/20 rounded-lg py-2 z-10 min-w-[140px] sm:min-w-[160px]"
           >
             <button
-              onClick={(e) => { e.stopPropagation(); onEdit() }}
-              className="w-full px-4 py-2 text-left text-gray-300 hover:text-white hover:bg-white/10 flex items-center space-x-2"
+              onClick={(e) => { e.stopPropagation(); onEdit(); setShowMenu(false) }}
+              className="w-full px-3 sm:px-4 py-2 text-left text-gray-300 hover:text-white hover:bg-white/10 flex items-center space-x-2 text-sm"
             >
-              <Edit className="w-4 h-4" />
+              <Edit className="w-3 h-3 sm:w-4 sm:h-4" />
               <span>Editar</span>
             </button>
             {proyecto.estadoProyecto === 'EN_DESARROLLO' && (
               <button
-                onClick={(e) => { e.stopPropagation(); onEstadoChange('EN_PAUSA') }}
-                className="w-full px-4 py-2 text-left text-yellow-400 hover:text-yellow-300 hover:bg-yellow-500/10 flex items-center space-x-2"
+                onClick={(e) => { e.stopPropagation(); onEstadoChange('EN_PAUSA'); setShowMenu(false) }}
+                className="w-full px-3 sm:px-4 py-2 text-left text-yellow-400 hover:text-yellow-300 hover:bg-yellow-500/10 flex items-center space-x-2 text-sm"
               >
-                <PauseCircle className="w-4 h-4" />
+                <PauseCircle className="w-3 h-3 sm:w-4 sm:h-4" />
                 <span>Pausar</span>
               </button>
             )}
             {proyecto.estadoProyecto !== 'COMPLETADO' && (
               <button
-                onClick={(e) => { e.stopPropagation(); onEstadoChange('COMPLETADO') }}
-                className="w-full px-4 py-2 text-left text-green-400 hover:text-green-300 hover:bg-green-500/10 flex items-center space-x-2"
+                onClick={(e) => { e.stopPropagation(); onEstadoChange('COMPLETADO'); setShowMenu(false) }}
+                className="w-full px-3 sm:px-4 py-2 text-left text-green-400 hover:text-green-300 hover:bg-green-500/10 flex items-center space-x-2 text-sm"
               >
-                <CheckCircle className="w-4 h-4" />
+                <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4" />
                 <span>Completar</span>
               </button>
             )}
             <hr className="border-white/10 my-1" />
             <button
-              onClick={(e) => { e.stopPropagation(); onDelete() }}
-              className="w-full px-4 py-2 text-left text-red-400 hover:text-red-300 hover:bg-red-500/10 flex items-center space-x-2"
+              onClick={(e) => { e.stopPropagation(); onDelete(); setShowMenu(false) }}
+              className="w-full px-3 sm:px-4 py-2 text-left text-red-400 hover:text-red-300 hover:bg-red-500/10 flex items-center space-x-2 text-sm"
             >
-              <Trash2 className="w-4 h-4" />
+              <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
               <span>Eliminar</span>
             </button>
           </motion.div>
         )}
       </div>
 
-      {/* Contenido principal */}
+      {/* Contenido principal responsive */}
       <div>
         <div className="flex items-start justify-between mb-3">
-          <div className="flex-1">
-            <h3 className="text-white font-semibold text-lg mb-1 truncate">
+          <div className="flex-1 min-w-0">
+            <h3 className="text-white font-semibold text-sm sm:text-lg mb-1 truncate">
               {proyecto.nombre}
             </h3>
-            <p className="text-gray-400 text-sm">
+            <p className="text-gray-400 text-xs sm:text-sm">
               {getTipoLabel(proyecto.tipo)}
             </p>
           </div>
-          <div className={`px-2 py-1 rounded border text-xs font-medium flex items-center space-x-1 ${getEstadoColor(proyecto.estadoProyecto)}`}>
+          <div className={`px-2 py-1 rounded border text-xs font-medium flex items-center space-x-1 ml-2 ${getEstadoColor(proyecto.estadoProyecto)}`}>
             {getEstadoIcon(proyecto.estadoProyecto)}
-            <span>{proyecto.estadoProyecto.replace('_', ' ')}</span>
+            <span className="hidden sm:inline">{proyecto.estadoProyecto.replace('_', ' ')}</span>
           </div>
         </div>
 
         {/* Cliente */}
-        <div className="flex items-center space-x-2 mb-4">
-          <User className="w-4 h-4 text-gray-400" />
-          <span className="text-gray-300 text-sm truncate">
+        <div className="flex items-center space-x-2 mb-3 sm:mb-4">
+          <User className="w-3 h-3 sm:w-4 sm:h-4 text-gray-400" />
+          <span className="text-gray-300 text-xs sm:text-sm truncate">
             {proyecto.cliente?.nombre || 'Cliente no asignado'}
           </span>
         </div>
 
         {/* Monto destacado */}
-        <div className="bg-white/5 rounded-lg p-3 mb-4">
+        <div className="bg-white/5 rounded-lg p-2 sm:p-3 mb-3 sm:mb-4">
           <div className="flex items-center justify-between">
-            <span className="text-gray-400 text-sm">Valor del proyecto</span>
-            <span className="text-green-400 font-bold text-lg">
+            <span className="text-gray-400 text-xs sm:text-sm">Valor del proyecto</span>
+            <span className="text-green-400 font-bold text-sm sm:text-lg">
               ${proyecto.montoTotal.toLocaleString()}
             </span>
           </div>
         </div>
 
-        {/* Fechas */}
-        <div className="space-y-2 mb-4">
-          <div className="flex items-center justify-between text-sm">
+        {/* Fechas responsive */}
+        <div className="space-y-1 sm:space-y-2 mb-3 sm:mb-4">
+          <div className="flex items-center justify-between text-xs sm:text-sm">
             <span className="text-gray-400">Inicio</span>
             <span className="text-gray-300">
               {new Date(proyecto.fechaInicio).toLocaleDateString()}
             </span>
           </div>
           {proyecto.fechaEntrega && (
-            <div className="flex items-center justify-between text-sm">
+            <div className="flex items-center justify-between text-xs sm:text-sm">
               <span className="text-gray-400">Entrega</span>
               <span className={`${esRetrasado ? 'text-red-400' : 'text-gray-300'}`}>
                 {new Date(proyecto.fechaEntrega).toLocaleDateString()}
@@ -791,21 +835,21 @@ const ProyectoCard: React.FC<ProyectoCardProps> = ({
         {/* Progreso de pagos mejorado */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-gray-400 text-sm">Progreso de pagos</span>
-            <span className="text-gray-300 text-sm font-medium">
+            <span className="text-gray-400 text-xs sm:text-sm">Progreso de pagos</span>
+            <span className="text-gray-300 text-xs sm:text-sm font-medium">
               {pagosPagados}/{totalPagos} ({progreso.toFixed(0)}%)
             </span>
           </div>
-          <div className="w-full bg-white/10 rounded-full h-2">
+          <div className="w-full bg-white/10 rounded-full h-1.5 sm:h-2">
             <motion.div
               initial={{ width: 0 }}
               animate={{ width: `${progreso}%` }}
-              transition={{ duration: 0.8, delay: index * 0.1 }}
-              className="bg-gradient-to-r from-green-500 to-blue-500 h-2 rounded-full"
+              transition={{ duration: 0.8, delay: index * 0.05 }}
+              className="bg-gradient-to-r from-green-500 to-blue-500 h-1.5 sm:h-2 rounded-full"
             />
           </div>
         </div>
       </div>
     </motion.div>
   )
-}
+})

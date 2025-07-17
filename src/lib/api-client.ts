@@ -1,249 +1,257 @@
-// src/lib/api-client.ts - MEJORADO para funcionar perfectamente con el nuevo middleware
+// src/lib/api-client-optimized.ts - VERSIÓN OPTIMIZADA
 import { authUtils } from '@/lib/auth'
+import { useState, useCallback, useRef } from 'react'
+
+// Cache para requests repetitivos
+const requestCache = new Map<string, { data: any; timestamp: number; ttl: number }>()
+const pendingRequests = new Map<string, Promise<any>>()
+
+// Configuración de cache
+const CACHE_TTL = {
+  default: 5 * 60 * 1000, // 5 minutos
+  clientes: 10 * 60 * 1000, // 10 minutos
+  proyectos: 5 * 60 * 1000, // 5 minutos
+  dashboard: 2 * 60 * 1000, // 2 minutos
+  usuarios: 15 * 60 * 1000, // 15 minutos
+}
+
+// Función para obtener TTL basado en la URL
+function getTTL(url: string): number {
+  if (url.includes('/clientes')) return CACHE_TTL.clientes
+  if (url.includes('/proyectos')) return CACHE_TTL.proyectos
+  if (url.includes('/dashboard')) return CACHE_TTL.dashboard
+  if (url.includes('/usuarios')) return CACHE_TTL.usuarios
+  return CACHE_TTL.default
+}
+
+// Función para limpiar cache expirado
+function cleanExpiredCache() {
+  const now = Date.now()
+  for (const [key, entry] of requestCache.entries()) {
+    if (now - entry.timestamp > entry.ttl) {
+      requestCache.delete(key)
+    }
+  }
+}
+
+// Limpiar cache cada 5 minutos
+setInterval(cleanExpiredCache, 5 * 60 * 1000)
 
 let isRefreshing = false;
 let refreshPromise: Promise<boolean> | null = null;
 
-// NUEVA: Función para verificar si el middleware puede leer las cookies
-async function ensureMiddlewareCompatibility(): Promise<boolean> {
-  const tokens = authUtils.getTokens();
-  if (!tokens) {
-    console.log('❌ No tokens available for middleware compatibility check');
-    return false;
-  }
-
-  // Forzar sincronización de cookies para asegurar que el middleware las pueda leer
-  authUtils.forceCookieSync();
-  
-  // Pequeña pausa para que las cookies se propaguen
-  await new Promise(resolve => setTimeout(resolve, 100));
-  
-  console.log('✅ Middleware compatibility ensured');
-  return true;
-}
-
-// Función helper para hacer requests autenticadas - MEJORADA
+// Función optimizada para requests autenticadas
 export async function authenticatedFetch(url: string, options: RequestInit = {}) {
-  console.log(`🌐 Making authenticated request to: ${url}`);
+  const method = options.method || 'GET'
+  const cacheKey = `${method}:${url}:${JSON.stringify(options.body || '')}`
   
-  // Si ya hay un refresh en progreso, esperar a que termine
-  if (isRefreshing && refreshPromise) {
-    console.log('⏳ Esperando refresh en progreso...');
-    const refreshResult = await refreshPromise;
-    if (!refreshResult) {
-      throw new Error('Refresh falló, sesión expirada');
+  // Solo cachear GET requests
+  if (method === 'GET') {
+    const cached = requestCache.get(cacheKey)
+    if (cached && Date.now() - cached.timestamp < cached.ttl) {
+      console.log(`✅ Cache hit for: ${url}`)
+      return new Response(JSON.stringify(cached.data), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+
+    // Si hay una request pendiente para la misma URL, esperar resultado
+    if (pendingRequests.has(cacheKey)) {
+      console.log(`⏳ Waiting for pending request: ${url}`)
+      return pendingRequests.get(cacheKey)!
     }
   }
+
+  console.log(`🌐 Making request to: ${url}`)
   
-  // CRÍTICO: Asegurar que tenemos tokens válidos Y que el middleware los puede leer
-  const hasValidTokens = await authUtils.ensureValidTokens();
-  
-  if (!hasValidTokens) {
-    console.log('❌ No valid tokens available after validation');
-    authUtils.logout();
-    throw new Error('No hay autenticación válida disponible');
+  // Verificar autenticación solo para requests protegidas
+  if (url.startsWith('/api/') && !url.includes('/auth/')) {
+    if (isRefreshing && refreshPromise) {
+      console.log('⏳ Esperando refresh en progreso...')
+      await refreshPromise
+    }
+    
+    const hasValidTokens = await authUtils.ensureValidTokens()
+    if (!hasValidTokens) {
+      throw new Error('Sesión expirada')
+    }
   }
 
-  // NUEVO: Asegurar compatibilidad con middleware
-  await ensureMiddlewareCompatibility();
-
-  const tokens = authUtils.getTokens();
+  const tokens = authUtils.getTokens()
+  const headers = new Headers(options.headers)
   
-  if (!tokens) {
-    console.log('❌ No tokens found after validation');
-    authUtils.logout();
-    throw new Error('No hay token de autenticación');
+  if (tokens && url.startsWith('/api/') && !url.includes('/auth/')) {
+    headers.set('Authorization', `Bearer ${tokens.idToken}`)
+    headers.set('X-Auth-Token', tokens.idToken)
+  }
+  
+  if (!headers.has('Content-Type') && options.body) {
+    headers.set('Content-Type', 'application/json')
   }
 
-  const headers = new Headers(options.headers);
-  
-  // CRÍTICO: Múltiples métodos para enviar el token (compatibilidad máxima)
-  headers.set('Authorization', `Bearer ${tokens.idToken}`);
-  headers.set('Content-Type', 'application/json');
-  headers.set('X-Auth-Token', tokens.idToken);
-  
-  // NUEVO: También enviar el accessToken en un header separado por si acaso
-  headers.set('X-Access-Token', tokens.accessToken);
-
-  console.log(`📡 Sending request with multiple auth methods to: ${url}`, {
-    hasAuthHeader: !!headers.get('Authorization'),
-    hasCustomHeader: !!headers.get('X-Auth-Token'),
-    hasAccessHeader: !!headers.get('X-Access-Token'),
-    tokenLength: tokens.idToken?.length || 0,
-  });
-  
-  // CRÍTICO: Usar credentials: 'include' para asegurar que las cookies se envíen
   const requestOptions: RequestInit = {
     ...options,
     headers,
-    credentials: 'include' // Esto es clave para que las cookies lleguen al middleware
-  };
+    credentials: 'include'
+  }
 
-  // Primera tentativa
-  let response = await fetch(url, requestOptions);
+  // Crear la promesa de request
+  const requestPromise = (async () => {
+    try {
+      let response = await fetch(url, requestOptions)
 
-  // Si obtenemos 401, intentar refresh UNA sola vez
-  if (response.status === 401) {
-    console.log('🔄 Received 401, attempting token refresh...');
-    
-    // Evitar múltiples refreshes simultáneos
-    if (!isRefreshing) {
-      isRefreshing = true;
-      refreshPromise = authUtils.refreshTokens();
-      
-      try {
-        const refreshed = await refreshPromise;
-        
-        if (refreshed) {
-          console.log('🔄 Retrying request with refreshed token...');
+      // Manejar 401 con refresh automático
+      if (response.status === 401 && tokens && !url.includes('/auth/')) {
+        if (!isRefreshing) {
+          isRefreshing = true
+          refreshPromise = authUtils.refreshTokens()
           
-          // IMPORTANTE: Asegurar compatibilidad DESPUÉS del refresh
-          await ensureMiddlewareCompatibility();
-          
-          // Obtener los nuevos tokens
-          const newTokens = authUtils.getTokens();
-          if (newTokens) {
-            // Actualizar headers con nuevo token
-            headers.set('Authorization', `Bearer ${newTokens.idToken}`);
-            headers.set('X-Auth-Token', newTokens.idToken);
-            headers.set('X-Access-Token', newTokens.accessToken);
-            
-            console.log('🔄 Retrying with refreshed tokens...');
-            
-            // Reintentar la request
-            response = await fetch(url, { 
-              ...options, 
-              headers,
-              credentials: 'include'
-            });
-            
-            if (response.status === 401) {
-              console.log('❌ Still 401 after refresh, logging out');
-              authUtils.logout();
-              throw new Error('Sesión expirada');
+          try {
+            const refreshed = await refreshPromise
+            if (refreshed) {
+              const newTokens = authUtils.getTokens()
+              if (newTokens) {
+                headers.set('Authorization', `Bearer ${newTokens.idToken}`)
+                headers.set('X-Auth-Token', newTokens.idToken)
+                response = await fetch(url, { ...requestOptions, headers })
+              }
             }
-          } else {
-            console.log('❌ No tokens found after refresh');
-            authUtils.logout();
-            throw new Error('Error obteniendo tokens después del refresh');
-          }
-        } else {
-          console.log('❌ Refresh failed, logging out');
-          authUtils.logout();
-          throw new Error('Sesión expirada');
-        }
-      } finally {
-        isRefreshing = false;
-        refreshPromise = null;
-      }
-    } else {
-      // Si ya hay un refresh en progreso, esperar
-      if (refreshPromise) {
-        const refreshResult = await refreshPromise;
-        if (refreshResult) {
-          await ensureMiddlewareCompatibility();
-          const newTokens = authUtils.getTokens();
-          if (newTokens) {
-            console.log('🔄 Using refreshed token from parallel refresh...');
-            headers.set('Authorization', `Bearer ${newTokens.idToken}`);
-            headers.set('X-Auth-Token', newTokens.idToken);
-            headers.set('X-Access-Token', newTokens.accessToken);
-            
-            return fetch(url, { ...options, headers, credentials: 'include' });
+          } finally {
+            isRefreshing = false
+            refreshPromise = null
           }
         }
+        
+        if (response.status === 401) {
+          authUtils.logout()
+          throw new Error('Sesión expirada')
+        }
       }
-      
-      authUtils.logout();
-      throw new Error('Sesión expirada');
+
+      // Cachear respuesta exitosa para GET requests
+      if (response.ok && method === 'GET') {
+        const data = await response.clone().json()
+        requestCache.set(cacheKey, {
+          data,
+          timestamp: Date.now(),
+          ttl: getTTL(url)
+        })
+      }
+
+      return response
+    } finally {
+      // Remover de requests pendientes
+      if (method === 'GET') {
+        pendingRequests.delete(cacheKey)
+      }
     }
+  })()
+
+  // Agregar a requests pendientes para GET
+  if (method === 'GET') {
+    pendingRequests.set(cacheKey, requestPromise)
   }
 
-  // Para otros errores de servidor, manejar apropiadamente
-  if (!response.ok && response.status >= 500) {
-    console.error(`🚨 Server error ${response.status} for ${url}`);
-    throw new Error(`Error del servidor: ${response.status}`);
-  }
-
-  console.log(`✅ Request successful: ${response.status} for ${url}`);
-  return response;
+  return requestPromise
 }
 
-// Hook personalizado mejorado para usar en los componentes
-import { useState, useCallback } from 'react'
-
+// Hook optimizado con debouncing y cancelación
 export function useApi() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null)
 
-  const request = useCallback(async (
-    url: string, 
-    options: RequestInit = {},
-    showLoading = true
-  ) => {
-    try {
-      if (showLoading) setLoading(true)
-      setError(null)
-
-      console.log(`🎯 API Request: ${options.method || 'GET'} ${url}`);
-
-      // NUEVO: Pre-check de autenticación para requests críticos
-      if (url.startsWith('/api/') && !url.includes('/auth/')) {
-        const isAuthenticated = authUtils.isAuthenticated();
-        if (!isAuthenticated) {
-          console.log('❌ Pre-flight auth check failed');
-          throw new Error('Sesión expirada - por favor inicia sesión nuevamente');
-        }
-      }
-
-      const response = await authenticatedFetch(url, options)
-      
-      if (!response.ok) {
-        const contentType = response.headers.get('content-type')
-        let errorData
-        
-        if (contentType && contentType.includes('application/json')) {
-          errorData = await response.json()
-        } else {
-          errorData = { error: `HTTP ${response.status}: ${response.statusText}` }
-        }
-        
-        console.error(`❌ API Error ${response.status} for ${url}:`, errorData);
-        
-        // NUEVO: Manejo específico de errores de autenticación
-        if (response.status === 401) {
-          console.log('🔐 401 error - triggering logout');
-          authUtils.logout();
-          throw new Error('Sesión expirada - redirigiendo al login...');
-        }
-        
-        throw new Error(errorData.error || `HTTP ${response.status}`)
-      }
-
-      // Verificar si la respuesta tiene contenido JSON
-      const contentType = response.headers.get('content-type')
-      if (contentType && contentType.includes('application/json')) {
-        const data = await response.json()
-        console.log(`✅ API Success: ${options.method || 'GET'} ${url}`);
-        return data
-      } else {
-        // Si no es JSON, devolver texto
-        const text = await response.text()
-        console.log(`✅ API Success (text): ${options.method || 'GET'} ${url}`);
-        return text
-      }
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Error desconocido'
-      console.error(`💥 API Request failed for ${url}:`, errorMessage);
-      setError(errorMessage)
-      throw err
-    } finally {
-      if (showLoading) setLoading(false)
+  // Función para cancelar requests previos
+  const cancelPendingRequests = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current)
     }
   }, [])
 
-  const get = useCallback((url: string, showLoading = true) => {
-    return request(url, { method: 'GET' }, showLoading)
+  // Request con debouncing automático
+  const request = useCallback(async (
+    url: string, 
+    options: RequestInit = {},
+    showLoading = true,
+    debounceMs = 0
+  ) => {
+    // Cancelar requests previos
+    cancelPendingRequests()
+
+    return new Promise((resolve, reject) => {
+      const executeRequest = async () => {
+        try {
+          if (showLoading) setLoading(true)
+          setError(null)
+
+          // Crear nuevo AbortController
+          abortControllerRef.current = new AbortController()
+          
+          const response = await authenticatedFetch(url, {
+            ...options,
+            signal: abortControllerRef.current.signal
+          })
+          
+          if (!response.ok) {
+            const contentType = response.headers.get('content-type')
+            let errorData
+            
+            if (contentType && contentType.includes('application/json')) {
+              errorData = await response.json()
+            } else {
+              errorData = { error: `HTTP ${response.status}: ${response.statusText}` }
+            }
+            
+            if (response.status === 401) {
+              authUtils.logout()
+              throw new Error('Sesión expirada')
+            }
+            
+            throw new Error(errorData.error || `HTTP ${response.status}`)
+          }
+
+          const contentType = response.headers.get('content-type')
+          const data = contentType && contentType.includes('application/json') 
+            ? await response.json() 
+            : await response.text()
+            
+          // Invalidar cache relacionado para operaciones que modifican datos
+          if (['POST', 'PUT', 'DELETE'].includes(options.method || 'GET')) {
+            invalidateRelatedCache(url)
+          }
+          
+          resolve(data)
+        } catch (err: any) {
+          if (err.name === 'AbortError') {
+            console.log('Request cancelled')
+            return
+          }
+          
+          const errorMessage = err instanceof Error ? err.message : 'Error desconocido'
+          setError(errorMessage)
+          reject(err)
+        } finally {
+          if (showLoading) setLoading(false)
+          abortControllerRef.current = null
+        }
+      }
+
+      // Aplicar debouncing si es necesario
+      if (debounceMs > 0) {
+        timeoutRef.current = setTimeout(executeRequest, debounceMs)
+      } else {
+        executeRequest()
+      }
+    })
+  }, [cancelPendingRequests])
+
+  const get = useCallback((url: string, showLoading = true, debounceMs = 0) => {
+    return request(url, { method: 'GET' }, showLoading, debounceMs)
   }, [request])
 
   const post = useCallback((url: string, data: any, showLoading = true) => {
@@ -264,9 +272,10 @@ export function useApi() {
     return request(url, { method: 'DELETE' }, showLoading)
   }, [request])
 
-  const clearError = useCallback(() => {
-    setError(null)
-  }, [])
+  // Cleanup en unmount
+  const cleanup = useCallback(() => {
+    cancelPendingRequests()
+  }, [cancelPendingRequests])
 
   return {
     loading,
@@ -276,88 +285,43 @@ export function useApi() {
     put,
     delete: del,
     request,
-    clearError
+    cleanup,
+    clearError: () => setError(null)
   }
 }
 
-// NUEVA: Función para hacer requests simples sin autenticación (para endpoints públicos)
-export async function publicFetch(url: string, options: RequestInit = {}) {
-  console.log(`🌍 Making public request to: ${url}`);
+// Función para invalidar cache relacionado
+function invalidateRelatedCache(url: string) {
+  const patterns = [
+    '/api/clientes',
+    '/api/proyectos', 
+    '/api/pagos',
+    '/api/dashboard',
+    '/api/estadisticas'
+  ]
   
-  const headers = new Headers(options.headers);
-  if (!headers.has('Content-Type')) {
-    headers.set('Content-Type', 'application/json');
+  for (const [key] of requestCache.entries()) {
+    for (const pattern of patterns) {
+      if (key.includes(pattern)) {
+        requestCache.delete(key)
+      }
+    }
   }
-
-  const response = await fetch(url, {
-    ...options,
-    headers
-  });
-
-  console.log(`${response.ok ? '✅' : '❌'} Public request result: ${response.status} for ${url}`);
-  return response;
 }
 
-// NUEVA: Hook para requests públicos
-export function usePublicApi() {
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const request = useCallback(async (
-    url: string, 
-    options: RequestInit = {},
-    showLoading = true
-  ) => {
-    try {
-      if (showLoading) setLoading(true)
-      setError(null)
-
-      const response = await publicFetch(url, options)
-      
-      if (!response.ok) {
-        const contentType = response.headers.get('content-type')
-        let errorData
-        
-        if (contentType && contentType.includes('application/json')) {
-          errorData = await response.json()
-        } else {
-          errorData = { error: `HTTP ${response.status}: ${response.statusText}` }
+// Hook para invalidar cache manualmente
+export function useCacheInvalidation() {
+  const invalidateCache = useCallback((pattern?: string) => {
+    if (pattern) {
+      for (const [key] of requestCache.entries()) {
+        if (key.includes(pattern)) {
+          requestCache.delete(key)
         }
-        
-        throw new Error(errorData.error || `HTTP ${response.status}`)
       }
-
-      const contentType = response.headers.get('content-type')
-      if (contentType && contentType.includes('application/json')) {
-        return await response.json()
-      } else {
-        return await response.text()
-      }
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Error desconocido'
-      setError(errorMessage)
-      throw err
-    } finally {
-      if (showLoading) setLoading(false)
+    } else {
+      requestCache.clear()
     }
   }, [])
 
-  const get = useCallback((url: string, showLoading = true) => {
-    return request(url, { method: 'GET' }, showLoading)
-  }, [request])
-
-  const post = useCallback((url: string, data: any, showLoading = true) => {
-    return request(url, {
-      method: 'POST',
-      body: JSON.stringify(data)
-    }, showLoading)
-  }, [request])
-
-  return {
-    loading,
-    error,
-    get,
-    post,
-    request
-  }
+  return { invalidateCache }
 }
