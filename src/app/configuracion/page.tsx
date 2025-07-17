@@ -21,7 +21,7 @@ import {
   CheckCircle,
   AlertCircle
 } from 'lucide-react'
-import { useCurrency, CURRENCIES, Currency } from '@/lib/currency-congif'
+import { useCurrency, CURRENCIES, Currency } from '@/lib/currency-config'
 import { LoadingSpinner } from '@/components/LoadingSpinner'
 
 export default function ConfiguracionPage() {
