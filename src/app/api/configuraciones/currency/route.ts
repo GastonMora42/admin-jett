@@ -1,6 +1,4 @@
 // API endpoints para configuración de moneda
-// src/app/api/configuracion/currency/route.ts
-export const currencyApiCode = `
 import { NextRequest, NextResponse } from 'next/server'
 
 // Simulamos una base de datos simple en memoria
@@ -24,7 +22,6 @@ export async function PUT(request: NextRequest) {
     
     return NextResponse.json({ message: 'Currency settings updated', settings })
   } catch (error) {
-    return NextResponse.json({ error: 'Error saving currency settings' }, { status: 500 })
+    return NextResponse.json({ error: 'Error saving currency settings' }, { status: 500 });
   }
-}
-`
+  }
