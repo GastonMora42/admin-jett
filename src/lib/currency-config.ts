@@ -1,8 +1,8 @@
-// src/lib/currency-config.ts - SISTEMA DE CONFIGURACIÓN DE MONEDA
+// src/lib/currency-config.ts - SISTEMA DE CONFIGURACIÓN DE MONEDA MEJORADO
 'use client'
 
 import React from 'react'
-import { useState, useEffect, useContext, createContext, ReactNode } from 'react'
+import { useState, useEffect, useContext, createContext, ReactNode, useCallback } from 'react'
 
 export type Currency = 'USD' | 'ARS'
 
@@ -17,7 +17,7 @@ interface CurrencyConfig {
 export const CURRENCIES: Record<Currency, CurrencyConfig> = {
   USD: {
     code: 'USD',
-    symbol: '$',
+    symbol: 'US$',
     name: 'Dólar Estadounidense',
     locale: 'en-US',
     position: 'before'
@@ -46,6 +46,7 @@ interface CurrencyContextType {
   getProjectCurrency: (projectId: string) => Currency
   setProjectCurrency: (projectId: string, currency: Currency) => Promise<void>
   convertCurrency: (amount: number, fromCurrency: Currency, toCurrency: Currency) => number
+  getCurrencySymbol: (currency: Currency) => string
   loading: boolean
   error: string | null
 }
@@ -55,7 +56,7 @@ const CurrencyContext = createContext<CurrencyContextType | null>(null)
 const DEFAULT_SETTINGS: CurrencySettings = {
   defaultCurrency: 'ARS',
   projectCurrencies: {},
-  exchangeRate: 1000, // 1 USD = 1000 ARS (ejemplo)
+  exchangeRate: 1200, // 1 USD = 1200 ARS (ejemplo actualizado)
   autoConvert: false,
   showBothCurrencies: false
 }
@@ -65,12 +66,7 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Cargar configuración al inicializar
-  useEffect(() => {
-    loadSettings()
-  }, [])
-
-  const loadSettings = async () => {
+  const loadSettings = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
@@ -78,8 +74,12 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
       // Cargar desde localStorage como fallback
       const localSettings = localStorage.getItem('currency_settings')
       if (localSettings) {
-        const parsed = JSON.parse(localSettings)
-        setSettings({ ...DEFAULT_SETTINGS, ...parsed })
+        try {
+          const parsed = JSON.parse(localSettings)
+          setSettings({ ...DEFAULT_SETTINGS, ...parsed })
+        } catch (parseError) {
+          console.warn('Error parsing local currency settings:', parseError)
+        }
       }
 
       // Intentar cargar desde el servidor
@@ -92,7 +92,7 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
           // Sincronizar con localStorage
           localStorage.setItem('currency_settings', JSON.stringify(mergedSettings))
         }
-      } catch (serverError) {
+      } catch {
         console.log('Server settings not available, using local settings')
       }
 
@@ -104,16 +104,25 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  // Cargar configuración al inicializar
+  useEffect(() => {
+    loadSettings()
+  }, [loadSettings])
 
   const updateExchangeRate = async () => {
     try {
-      // En un entorno real, aquí harías una llamada a una API de cambio
-      // Por ahora usamos un valor de ejemplo
-      const mockRate = 1000 + Math.random() * 100 // Simular fluctuación
+      // En un entorno real, aquí harías una llamada a una API de cambio como:
+      // const response = await fetch('https://api.exchangerate-api.com/v4/latest/USD')
+      // const data = await response.json()
+      // const rate = data.rates.ARS
+      
+      // Por ahora usamos un valor simulado con fluctuación
+      const mockRate = 1200 + Math.random() * 100 // Simular fluctuación
       setSettings(prev => ({ ...prev, exchangeRate: Math.round(mockRate) }))
-    } catch (error) {
-      console.error('Error updating exchange rate:', error)
+    } catch {
+      console.log('Error updating exchange rate, using cached value')
     }
   }
 
@@ -132,12 +141,16 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
 
       // Intentar guardar en el servidor
       try {
-        await fetch('/api/configuracion/currency', {
+        const response = await fetch('/api/configuracion/currency', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(updatedSettings)
         })
-      } catch (serverError) {
+        
+        if (!response.ok) {
+          console.warn('Could not save to server, saved locally')
+        }
+      } catch {
         console.log('Could not save to server, saved locally')
       }
 
@@ -162,28 +175,22 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
     }
 
     const config = CURRENCIES[targetCurrency]
-    const symbol = targetCurrency === 'USD' ? 'US$' : '$'
     
     try {
       const formatted = new Intl.NumberFormat(config.locale, {
-        style: 'currency',
-        currency: targetCurrency,
         minimumFractionDigits: 0,
         maximumFractionDigits: 0
       }).format(amount)
 
-      // Reemplazar el símbolo estándar con nuestro símbolo personalizado
-      if (targetCurrency === 'USD') {
-        return formatted.replace(/\$|USD/g, 'US$')
-      }
-      
-      return formatted
-    } catch (error) {
+      return config.position === 'before' 
+        ? `${config.symbol}${formatted}`
+        : `${formatted} ${config.symbol}`
+    } catch {
       // Fallback manual si falla Intl.NumberFormat
       const formattedAmount = amount.toLocaleString(config.locale)
       return config.position === 'before' 
-        ? `${symbol}${formattedAmount}`
-        : `${formattedAmount} ${symbol}`
+        ? `${config.symbol}${formattedAmount}`
+        : `${formattedAmount} ${config.symbol}`
     }
   }
 
@@ -216,6 +223,10 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
     return amount
   }
 
+  const getCurrencySymbol = (currency: Currency): string => {
+    return CURRENCIES[currency].symbol
+  }
+
   const contextValue: CurrencyContextType = {
     settings,
     updateSettings,
@@ -223,6 +234,7 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
     getProjectCurrency,
     setProjectCurrency,
     convertCurrency,
+    getCurrencySymbol,
     loading,
     error
   }
@@ -244,12 +256,12 @@ export function useCurrency() {
 
 // Hook para formatear moneda de forma simple
 export function useCurrencyFormat() {
-  const { formatCurrency, settings } = useCurrency()
+  const { formatCurrency, settings, getCurrencySymbol } = useCurrency()
   
   return {
     format: formatCurrency,
     defaultCurrency: settings.defaultCurrency,
-    symbol: CURRENCIES[settings.defaultCurrency].symbol
+    symbol: getCurrencySymbol(settings.defaultCurrency),
+    getSymbol: getCurrencySymbol
   }
 }
-

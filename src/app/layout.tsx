@@ -1,9 +1,10 @@
-// app/layout.tsx
+// src/app/layout.tsx - VERSIÓN ACTUALIZADA CON CURRENCY PROVIDER
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
-import { AuthProvider } from '@/components/AuthProvider' // ← Agregar esto
+import { AuthProvider } from '@/components/AuthProvider'
 import { AppLayout } from '@/components/AppLayout'
+import { CurrencyProvider } from '@/lib/currency-config'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -20,11 +21,12 @@ export default function RootLayout({
   return (
     <html lang="es">
       <body className={inter.className}>
-        {/* Envolver toda la aplicación con AuthProvider */}
         <AuthProvider>
-          <AppLayout>
-            {children}
-          </AppLayout>
+          <CurrencyProvider>
+            <AppLayout>
+              {children}
+            </AppLayout>
+          </CurrencyProvider>
         </AuthProvider>
       </body>
     </html>

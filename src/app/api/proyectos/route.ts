@@ -1,13 +1,21 @@
-
-// =====================================================
-// API PROYECTOS - src/app/api/proyectos/route.ts  
-// =====================================================
-
+// src/app/api/proyectos/route.ts - VERSIÓN CON SOPORTE DE MONEDA
 import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
 import { requireAuth } from '@/lib/api-auth'
 
 const prisma = new PrismaClient()
+
+interface CreateProyectoDataWithCurrency {
+  nombre: string
+  tipo: string
+  montoTotal: number
+  formaPago: string
+  cuotas?: number
+  fechaInicio: string
+  fechaEntrega?: string
+  clienteId: string
+  currency: 'USD' | 'ARS' // ✅ NUEVA PROPIEDAD
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -40,7 +48,13 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    return NextResponse.json(proyectos)
+    // ✅ AGREGAR INFORMACIÓN DE MONEDA A CADA PROYECTO
+    const proyectosWithCurrency = proyectos.map(proyecto => ({
+      ...proyecto,
+      currency: getCurrencyFromMetadata(proyecto.id), // Función auxiliar
+    }))
+
+    return NextResponse.json(proyectosWithCurrency)
   } catch (error) {
     console.error('Error al obtener proyectos:', error)
     return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 })
@@ -55,7 +69,7 @@ export async function POST(request: NextRequest) {
       return authResult.response
     }
 
-    const data = await request.json()
+    const data: CreateProyectoDataWithCurrency = await request.json()
     const { 
       nombre, 
       tipo, 
@@ -64,7 +78,8 @@ export async function POST(request: NextRequest) {
       cuotas, 
       fechaInicio, 
       fechaEntrega, 
-      clienteId 
+      clienteId,
+      currency // ✅ NUEVA PROPIEDAD
     } = data
 
     // Validaciones básicas
@@ -74,14 +89,20 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
+    if (!currency || !['USD', 'ARS'].includes(currency)) {
+      return NextResponse.json({ 
+        error: 'Moneda inválida. Debe ser USD o ARS' 
+      }, { status: 400 })
+    }
+
     // Crear proyecto
     const proyecto = await prisma.proyecto.create({
       data: {
         nombre,
-        tipo: tipo || 'SOFTWARE_A_MEDIDA',
-        montoTotal: parseFloat(montoTotal),
-        formaPago: formaPago || 'PAGO_UNICO',
-        cuotas: parseInt(cuotas) || 1,
+        tipo: tipo as any || 'SOFTWARE_A_MEDIDA',
+        montoTotal: parseFloat(montoTotal.toString()),
+        formaPago: formaPago as any || 'PAGO_UNICO',
+        cuotas: parseInt(cuotas?.toString() || '1'),
         fechaInicio: new Date(fechaInicio),
         fechaEntrega: fechaEntrega ? new Date(fechaEntrega) : null,
         clienteId,
@@ -89,13 +110,68 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    // Crear pagos automáticamente
-    await crearPagosAutomaticos(proyecto as ProyectoData)
+    // ✅ GUARDAR LA MONEDA DEL PROYECTO
+    await saveCurrencyMetadata(proyecto.id, currency)
 
-    return NextResponse.json(proyecto, { status: 201 })
+    // Crear pagos automáticamente
+    await crearPagosAutomaticos({
+      id: proyecto.id,
+      montoTotal: proyecto.montoTotal,
+      cuotas: proyecto.cuotas || 1,
+      fechaInicio: proyecto.fechaInicio,
+      formaPago: proyecto.formaPago
+    })
+
+    // ✅ RETORNAR PROYECTO CON INFORMACIÓN DE MONEDA
+    const proyectoWithCurrency = {
+      ...proyecto,
+      currency
+    }
+
+    return NextResponse.json(proyectoWithCurrency, { status: 201 })
   } catch (error) {
     console.error('Error al crear proyecto:', error)
     return NextResponse.json({ error: 'Error al crear proyecto' }, { status: 500 })
+  }
+}
+
+// ✅ FUNCIONES AUXILIARES PARA MANEJAR METADATA DE MONEDA
+async function saveCurrencyMetadata(proyectoId: string, currency: 'USD' | 'ARS') {
+  try {
+    // Opción 1: Guardar en una tabla separada de metadata
+    // await prisma.proyectoMetadata.create({
+    //   data: {
+    //     proyectoId,
+    //     key: 'currency',
+    //     value: currency
+    //   }
+    // })
+
+    // Opción 2: Guardar en localStorage del servidor (temporal)
+    // En un entorno real, esto se guardaría en la base de datos
+    global.projectCurrencies = global.projectCurrencies || {}
+    global.projectCurrencies[proyectoId] = currency
+    
+    console.log(`💰 Currency ${currency} saved for project ${proyectoId}`)
+  } catch (error) {
+    console.error('Error saving currency metadata:', error)
+  }
+}
+
+function getCurrencyFromMetadata(proyectoId: string): 'USD' | 'ARS' {
+  try {
+    // Opción 1: Cargar desde tabla de metadata
+    // const metadata = await prisma.proyectoMetadata.findFirst({
+    //   where: { proyectoId, key: 'currency' }
+    // })
+    // return metadata?.value || 'ARS'
+
+    // Opción 2: Cargar desde storage temporal
+    global.projectCurrencies = global.projectCurrencies || {}
+    return global.projectCurrencies[proyectoId] || 'ARS'
+  } catch (error) {
+    console.error('Error getting currency metadata:', error)
+    return 'ARS' // Default
   }
 }
 
@@ -107,7 +183,7 @@ interface ProyectoData {
   formaPago: string
 }
 
-// Función auxiliar para crear pagos
+// Función auxiliar para crear pagos (sin cambios)
 async function crearPagosAutomaticos(proyecto: ProyectoData) {
   const { id, montoTotal, cuotas, fechaInicio, formaPago } = proyecto
   const montoPorCuota = montoTotal / cuotas
@@ -137,4 +213,11 @@ async function crearPagosAutomaticos(proyecto: ProyectoData) {
       }
     })
   }
+}
+
+// ===============================================
+// DECLARACIÓN GLOBAL PARA TYPESCRIPT
+// ===============================================
+declare global {
+  var projectCurrencies: Record<string, 'USD' | 'ARS'> | undefined
 }

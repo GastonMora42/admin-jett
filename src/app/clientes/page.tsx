@@ -1,4 +1,4 @@
-// src/app/clientes/page.tsx - VERSIÓN OPTIMIZADA
+// src/app/clientes/page.tsx - VERSIÓN CORREGIDA SIN ERRORES DE ESLINT
 'use client'
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
@@ -404,8 +404,8 @@ export default function ClientesPage() {
   )
 }
 
-// Componente de tarjeta de cliente optimizado
-interface ClienteCardProps {
+// ✅ COMPONENTE CON DISPLAY NAME CORREGIDO
+const ClienteCard: React.FC<{
   cliente: Cliente
   index: number
   onEdit: () => void
@@ -413,9 +413,7 @@ interface ClienteCardProps {
   onSelect: (selected: boolean) => void
   isSelected: boolean
   disabled: boolean
-}
-
-const ClienteCard: React.FC<ClienteCardProps> = React.memo(({
+}> = React.memo(function ClienteCard({
   cliente,
   index,
   onEdit,
@@ -423,7 +421,7 @@ const ClienteCard: React.FC<ClienteCardProps> = React.memo(({
   onSelect,
   isSelected,
   disabled
-}) => {
+}) {
   const [showMenu, setShowMenu] = useState(false)
   const totalProyectos = cliente.proyectos?.length || 0
   const totalFacturado = cliente.proyectos?.reduce((sum, p) => sum + p.montoTotal, 0) || 0

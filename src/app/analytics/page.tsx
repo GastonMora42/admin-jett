@@ -102,7 +102,12 @@ export default function AnalyticsPage() {
       ])
 
       // Procesar datos para analytics
-      const analyticsCalculados = calcularAnalytics(proyectos, pagos, clientes, timeframe)
+      const analyticsCalculados = calcularAnalytics(
+        Array.isArray(proyectos) ? proyectos : [],
+        Array.isArray(pagos) ? pagos : [],
+        Array.isArray(clientes) ? clientes : [],
+        timeframe
+      )
       setAnalytics(analyticsCalculados)
     } catch (err) {
       console.error('Error loading analytics:', err)
