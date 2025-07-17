@@ -647,7 +647,9 @@ const ProyectoCard: React.FC<ProyectoCardProps> = React.memo(({
   isSelected
 }) => {
   const [showMenu, setShowMenu] = useState(false)
-  
+  // Después de la definición del componente ProyectoCard
+ProyectoCard.displayName = 'ProyectoCard'
+
   const getEstadoIcon = (estado: EstadoProyecto) => {
     switch (estado) {
       case 'EN_DESARROLLO': return <PlayCircle className="w-3 h-3 sm:w-4 sm:h-4" />
