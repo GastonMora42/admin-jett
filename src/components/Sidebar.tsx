@@ -58,9 +58,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
   // Cerrar sidebar al cambiar de ruta en móvil
   useEffect(() => {
     if (!isMobile) {
-      setSidebarOpen(false)
+      setIsOpen(false)
     }
-  }, [pathname, isMobile])
+  }, [pathname, isMobile, setIsOpen])
 
   // Manejar logout
   const handleLogout = async () => {
@@ -543,7 +543,3 @@ const SidebarContent: React.FC<SidebarContentProps> = ({
 Sidebar.displayName = 'Sidebar'
 
 export default Sidebar
-
-function setSidebarOpen(arg0: boolean) {
-  throw new Error('Function not implemented.')
-}
