@@ -100,9 +100,8 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
       {/* Sidebar */}
       <Sidebar 
         isOpen={sidebarOpen}
-        setIsOpen={setSidebarOpen} isCollapsed={false} setIsCollapsed={function (collapsed: boolean): void {
-          throw new Error('Function not implemented.')
-        } }      />
+        setIsOpen={setSidebarOpen}
+      />
       
       {/* Header móvil */}
       <MobileHeader onMenuClick={() => setSidebarOpen(true)} user={user} />
