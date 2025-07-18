@@ -1,7 +1,7 @@
-// src/lib/api-client.ts - API CLIENT CORREGIDO Y MEJORADO
+// src/lib/api-client.ts - API CLIENT CORREGIDO
 'use client'
 
-import { useState, useCallback } from 'react'
+import React, { useState, useCallback, useEffect } from 'react'
 import { authUtils } from '@/lib/auth'
 
 interface ApiClientState {
@@ -266,9 +266,11 @@ export function useApi() {
   }, [])
 
   // Suscribirse a cambios de estado
-  React.useEffect(() => {
+  useEffect(() => {
     const unsubscribe = subscribe()
-    return unsubscribe
+    return () => {
+      unsubscribe()
+    }
   }, [subscribe])
 
   return {
@@ -342,11 +344,6 @@ export const apiUtils = {
     return apiClient.post('/api/auth/login', { email, password })
   },
 
-  register: async (userData: any) => {
-    console.log('📝 Attempting registration for:', userData.email)
-    return apiClient.post('/api/auth/register', userData)
-  },
-
   logout: async () => {
     console.log('🚪 Logging out...')
     return apiClient.post('/api/auth/logout')
@@ -404,6 +401,3 @@ export interface PaginatedResponse<T> {
     totalPages: number
   }
 }
-
-// Import React para el useEffect en useApi
-import React from 'react'

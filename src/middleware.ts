@@ -1,4 +1,4 @@
-// src/middleware.ts - VERSIÓN CORREGIDA para manejar cookies de Cognito
+// src/middleware.ts - SIN REGISTRO PÚBLICO
 import { NextRequest, NextResponse } from 'next/server'
 
 interface DecodedToken {
@@ -121,7 +121,7 @@ function extractToken(request: NextRequest): { token: string | null, source: str
     return { token: idTokenCookie, source: 'simple-cookie' }
   }
 
-  // 5. NUEVO: Buscar cookies de Cognito
+  // 5. Buscar cookies de Cognito
   const cookieHeader = request.headers.get('cookie')
   if (cookieHeader) {
     console.log('🔍 [MIDDLEWARE] Parsing raw cookie header for Cognito tokens...')
@@ -167,26 +167,22 @@ export function middleware(request: NextRequest) {
   
   console.log('🛡️ [MIDDLEWARE] Processing request:', pathname)
 
-  // Rutas públicas que no requieren autenticación
+  // Rutas públicas que no requieren autenticación (SIN REGISTRO)
   const publicRoutes = [
     '/',
     '/auth/signin',
-    '/auth/signup', 
-    '/auth/register',
     '/auth/error',
     '/auth/suspended',
     '/auth/unauthorized',
     '/auth/confirm'
   ]
 
-  // APIs públicas que no requieren autenticación
+  // APIs públicas que no requieren autenticación (SIN REGISTRO)
   const publicApiRoutes = [
     '/api/auth/login',
-    '/api/auth/register',
     '/api/auth/confirm',
     '/api/auth/refresh',
     '/api/auth/logout',
-    '/api/auth/registration-status',
     '/api/auth/forgot-password',
     '/api/auth/confirm-forgot-password',
     '/api/auth/resend-code',
@@ -195,6 +191,12 @@ export function middleware(request: NextRequest) {
 
   const isPublicRoute = publicRoutes.includes(pathname) || pathname.startsWith('/auth/')
   const isPublicApiRoute = publicApiRoutes.includes(pathname)
+  
+  // ✅ BLOQUEAR REGISTRO PÚBLICO
+  if (pathname === '/auth/register' || pathname === '/api/auth/register') {
+    console.log('🚫 [MIDDLEWARE] Public registration blocked:', pathname)
+    return NextResponse.redirect(new URL('/auth/signin', request.url))
+  }
   
   if (isPublicRoute || isPublicApiRoute) {
     console.log('✅ [MIDDLEWARE] Public route allowed:', pathname)
@@ -230,7 +232,7 @@ export function middleware(request: NextRequest) {
         request: { headers: requestHeaders }
       })
 
-      // NUEVO: Si el token viene de Cognito, establecer cookies simples para futuros requests
+      // Si el token viene de Cognito, establecer cookies simples para futuros requests
       if (source === 'cognito-cookie') {
         console.log('🍪 [MIDDLEWARE] Syncing Cognito token to simple cookies')
         response.cookies.set('token', token, { 
@@ -238,7 +240,7 @@ export function middleware(request: NextRequest) {
           secure: process.env.NODE_ENV === 'production',
           sameSite: 'strict',
           path: '/',
-          maxAge: 86400 // 24 horas
+          maxAge: 86400
         })
         response.cookies.set('idToken', token, { 
           httpOnly: false, 
@@ -301,7 +303,7 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  // CRÍTICO: Agregar headers de usuario para APIs
+  // Agregar headers de usuario para APIs
   const requestHeaders = new Headers(request.headers)
   requestHeaders.set('x-user-id', decodedToken.sub)
   requestHeaders.set('x-user-email', decodedToken.email)
@@ -315,7 +317,7 @@ export function middleware(request: NextRequest) {
     request: { headers: requestHeaders }
   })
 
-  // NUEVO: Sincronizar cookies simples si el token viene de Cognito
+  // Sincronizar cookies simples si el token viene de Cognito
   if (source === 'cognito-cookie') {
     console.log('🍪 [MIDDLEWARE] Syncing Cognito token to simple cookies for API')
     response.cookies.set('token', token, { 

@@ -1,4 +1,4 @@
-// src/components/Sidebar.tsx - VERSIÓN PROFESIONAL Y RESPONSIVE
+// src/components/Sidebar.tsx - VERSIÓN CON GESTIÓN DE USUARIOS
 'use client'
 
 import React, { useState, useEffect } from 'react'
@@ -21,7 +21,9 @@ import {
   X,
   ChevronDown,
   Bell,
-  Search
+  Search,
+  UserCog, // Nueva: icono para gestión de usuarios
+  Shield
 } from 'lucide-react'
 
 interface SidebarProps {
@@ -36,12 +38,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
   const [isMobile, setIsMobile] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
 
-  // Detectar si es móvil
+  // Verificar si es admin o superadmin
+  const isAdmin = user?.['custom:role'] === 'ADMIN' || user?.['custom:role'] === 'SUPERADMIN'
+
+  // Detectar tamaño de pantalla
   useEffect(() => {
     const checkMobile = () => {
       setIsMobile(window.innerWidth < 1024)
       if (window.innerWidth < 1024) {
-        setIsCollapsed(false) // En móvil, no colapsar sino mostrar/ocultar completamente
+        setIsCollapsed(false)
       }
     }
 
@@ -50,12 +55,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
     return () => window.removeEventListener('resize', checkMobile)
   }, [])
 
-  // Cerrar sidebar en móvil al hacer clic en un enlace
-  const handleLinkClick = () => {
-    if (isMobile) {
-      setIsOpen(false)
+  // Cerrar sidebar al cambiar de ruta en móvil
+  useEffect(() => {
+    if (!isMobile) {
+      setSidebarOpen(false)
     }
-  }
+  }, [pathname, isMobile])
 
   // Manejar logout
   const handleLogout = async () => {
@@ -63,50 +68,80 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
     await logout()
   }
 
+  // Navegación principal
   const navigation = [
     { 
       name: 'Dashboard', 
       href: '/dashboard', 
       icon: LayoutDashboard,
-      description: 'Vista general' 
+      description: 'Vista general',
+      adminOnly: false
     },
     { 
       name: 'Clientes', 
       href: '/clientes', 
       icon: Users,
-      description: 'Gestión de clientes' 
+      description: 'Gestión de clientes',
+      adminOnly: false
     },
     { 
       name: 'Proyectos', 
       href: '/proyectos', 
       icon: FolderOpen,
-      description: 'Proyectos activos' 
+      description: 'Proyectos activos',
+      adminOnly: false
     },
     { 
       name: 'Pagos', 
       href: '/pagos', 
       icon: DollarSign,
-      description: 'Control de pagos' 
+      description: 'Control de pagos',
+      adminOnly: false
     },
     { 
       name: 'Facturación', 
       href: '/facturacion', 
       icon: BarChart3,
-      description: 'Reportes financieros' 
+      description: 'Reportes financieros',
+      adminOnly: false
     },
     { 
       name: 'Analytics', 
       href: '/analytics', 
       icon: BarChart3,
-      description: 'Análisis y métricas' 
+      description: 'Análisis y métricas',
+      adminOnly: false
     },
     { 
       name: 'Calendario', 
       href: '/calendario', 
       icon: Calendar,
-      description: 'Agenda y fechas' 
-    },
+      description: 'Agenda y fechas',
+      adminOnly: false
+    }
   ]
+
+  // Navegación de administración (solo para admins)
+  const adminNavigation = [
+    { 
+      name: 'Gestión de Usuarios', 
+      href: '/admin/usuarios', 
+      icon: UserCog,
+      description: 'Administrar usuarios',
+      adminOnly: true
+    },
+    { 
+      name: 'Configuración', 
+      href: '/configuracion', 
+      icon: Settings,
+      description: 'Ajustes del sistema',
+      adminOnly: true
+    }
+  ]
+
+  // Filtrar navegación según permisos
+  const filteredNavigation = navigation.filter(item => !item.adminOnly || isAdmin)
+  const filteredAdminNavigation = adminNavigation.filter(item => isAdmin)
 
   // Sidebar para móvil (overlay)
   if (isMobile) {
@@ -132,16 +167,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
               className="fixed left-0 top-0 h-full w-72 bg-slate-950/95 backdrop-blur-xl border-r border-white/10 z-50 lg:hidden"
             >
               <SidebarContent
-                navigation={navigation}
+                navigation={filteredNavigation}
+                adminNavigation={filteredAdminNavigation}
                 pathname={pathname}
                 user={user}
                 isCollapsed={false}
                 userMenuOpen={userMenuOpen}
                 setUserMenuOpen={setUserMenuOpen}
-                onLinkClick={handleLinkClick}
+                onLinkClick={() => setIsOpen(false)}
                 onLogout={handleLogout}
                 onClose={() => setIsOpen(false)}
                 isMobile={true}
+                isAdmin={isAdmin}
               />
             </motion.div>
           </>
@@ -160,7 +197,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
       className="fixed left-0 top-0 h-full bg-slate-950/95 backdrop-blur-xl border-r border-white/10 z-30 hidden lg:block"
     >
       <SidebarContent
-        navigation={navigation}
+        navigation={filteredNavigation}
+        adminNavigation={filteredAdminNavigation}
         pathname={pathname}
         user={user}
         isCollapsed={isCollapsed}
@@ -169,6 +207,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
         onToggleCollapse={() => setIsCollapsed(!isCollapsed)}
         onLogout={handleLogout}
         isMobile={false}
+        isAdmin={isAdmin}
       />
     </motion.div>
   )
@@ -181,6 +220,14 @@ interface SidebarContentProps {
     href: string
     icon: React.ComponentType<any>
     description: string
+    adminOnly: boolean
+  }>
+  adminNavigation: Array<{
+    name: string
+    href: string
+    icon: React.ComponentType<any>
+    description: string
+    adminOnly: boolean
   }>
   pathname: string
   user: any
@@ -192,10 +239,12 @@ interface SidebarContentProps {
   onLogout: () => void
   onClose?: () => void
   isMobile: boolean
+  isAdmin: boolean
 }
 
 const SidebarContent: React.FC<SidebarContentProps> = ({
   navigation,
+  adminNavigation,
   pathname,
   user,
   isCollapsed,
@@ -205,7 +254,8 @@ const SidebarContent: React.FC<SidebarContentProps> = ({
   onToggleCollapse,
   onLogout,
   onClose,
-  isMobile
+  isMobile,
+  isAdmin
 }) => {
   return (
     <div className="flex flex-col h-full">
@@ -281,6 +331,7 @@ const SidebarContent: React.FC<SidebarContentProps> = ({
 
       {/* Navigation */}
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+        {/* Navegación principal */}
         {navigation.map((item) => {
           const isActive = pathname === item.href
           const Icon = item.icon
@@ -313,6 +364,76 @@ const SidebarContent: React.FC<SidebarContentProps> = ({
                 <div className="flex items-center space-x-3 min-w-0 flex-1">
                   <Icon className={`w-5 h-5 flex-shrink-0 ${
                     isActive ? 'text-white' : 'text-gray-400 group-hover:text-white'
+                  }`} />
+                  
+                  {!isCollapsed && (
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium truncate">{item.name}</p>
+                      <p className="text-xs opacity-75 truncate">{item.description}</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Tooltip para modo colapsado */}
+                {isCollapsed && (
+                  <div className="absolute left-full ml-2 px-3 py-2 bg-black/90 backdrop-blur-xl border border-white/20 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none">
+                    <p className="text-sm font-medium text-white whitespace-nowrap">{item.name}</p>
+                    <p className="text-xs text-gray-400 whitespace-nowrap">{item.description}</p>
+                  </div>
+                )}
+              </Link>
+            </motion.div>
+          )
+        })}
+
+        {/* Separador para navegación de admin */}
+        {isAdmin && adminNavigation.length > 0 && (
+          <div className="py-4">
+            <div className="border-t border-white/10"></div>
+            {!isCollapsed && (
+              <div className="flex items-center space-x-2 mt-4 mb-2">
+                <Shield className="w-4 h-4 text-purple-400" />
+                <span className="text-xs font-medium text-purple-400 uppercase tracking-wider">
+                  Administración
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Navegación de administración */}
+        {isAdmin && adminNavigation.map((item) => {
+          const isActive = pathname === item.href || pathname.startsWith(item.href)
+          const Icon = item.icon
+          
+          return (
+            <motion.div
+              key={item.name}
+              whileHover={{ x: isCollapsed ? 0 : 4 }}
+              whileTap={{ scale: 0.98 }}
+            >
+              <Link
+                href={item.href}
+                onClick={onLinkClick}
+                className={`group flex items-center px-3 py-3 rounded-xl transition-all duration-200 relative ${
+                  isActive
+                    ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg shadow-purple-500/25'
+                    : 'text-gray-300 hover:bg-white/10 hover:text-white'
+                }`}
+              >
+                {/* Indicador activo */}
+                {isActive && (
+                  <motion.div
+                    layoutId="activeAdminIndicator"
+                    className="absolute left-0 w-1 h-8 bg-white rounded-r-full"
+                    initial={false}
+                    transition={{ type: "spring", damping: 25, stiffness: 200 }}
+                  />
+                )}
+                
+                <div className="flex items-center space-x-3 min-w-0 flex-1">
+                  <Icon className={`w-5 h-5 flex-shrink-0 ${
+                    isActive ? 'text-white' : 'text-purple-400 group-hover:text-white'
                   }`} />
                   
                   {!isCollapsed && (
@@ -393,14 +514,6 @@ const SidebarContent: React.FC<SidebarContentProps> = ({
                 </button>
                 
                 <button
-                  onClick={() => {/* Ir a configuración */}}
-                  className="w-full flex items-center space-x-3 px-4 py-2 text-left text-gray-300 hover:text-white hover:bg-white/10 transition-colors"
-                >
-                  <Settings className="w-4 h-4" />
-                  <span className="text-sm">Configuración</span>
-                </button>
-
-                <button
                   onClick={() => {/* Ver notificaciones */}}
                   className="w-full flex items-center space-x-3 px-4 py-2 text-left text-gray-300 hover:text-white hover:bg-white/10 transition-colors"
                 >
@@ -430,3 +543,7 @@ const SidebarContent: React.FC<SidebarContentProps> = ({
 Sidebar.displayName = 'Sidebar'
 
 export default Sidebar
+
+function setSidebarOpen(arg0: boolean) {
+  throw new Error('Function not implemented.')
+}
