@@ -1,4 +1,4 @@
-// src/components/AppLayout.tsx - VERSIÓN ACTUALIZADA CON SIDEBAR RESPONSIVE
+// src/components/AppLayout.tsx - VERSIÓN RESPONSIVA CON SIDEBAR COLAPSABLE
 'use client'
 
 import React, { useState, useEffect } from 'react'
@@ -51,12 +51,16 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
   const { isAuthenticated, isLoading, user } = useAuth()
   const pathname = usePathname()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [isDesktop, setIsDesktop] = useState(false)
 
   // Detectar tamaño de pantalla
   useEffect(() => {
     const checkDesktop = () => {
       setIsDesktop(window.innerWidth >= 1024)
+      if (window.innerWidth < 1024) {
+        setSidebarCollapsed(false) // En móvil, no colapsar sino mostrar/ocultar completamente
+      }
     }
 
     checkDesktop()
@@ -64,7 +68,7 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
     return () => window.removeEventListener('resize', checkDesktop)
   }, [])
 
-  // Cerrar sidebar al cambiar de ruta en móvil
+  // Cerrar sidebar en móvil al cambiar de ruta
   useEffect(() => {
     if (!isDesktop) {
       setSidebarOpen(false)
@@ -94,14 +98,22 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
   return (
     <div className="min-h-screen bg-black text-white">
       {/* Sidebar */}
-      <Sidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} />
+      <Sidebar 
+        isOpen={sidebarOpen}
+        setIsOpen={setSidebarOpen} isCollapsed={false} setIsCollapsed={function (collapsed: boolean): void {
+          throw new Error('Function not implemented.')
+        } }      />
       
       {/* Header móvil */}
       <MobileHeader onMenuClick={() => setSidebarOpen(true)} user={user} />
 
       {/* Contenido principal */}
       <div className={`transition-all duration-300 ${
-        isDesktop ? 'lg:ml-80' : ''
+        isDesktop 
+          ? sidebarCollapsed 
+            ? 'lg:ml-20' // 80px cuando está colapsado
+            : 'lg:ml-[280px]' // 280px cuando está expandido (valor exacto)
+          : ''
       }`}>
         <main className={`min-h-screen ${
           isDesktop ? 'p-6' : 'pt-16 p-4'
@@ -119,44 +131,3 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
     </div>
   )
 }
-
-// ============================================
-// src/app/layout.tsx - VERSIÓN ACTUALIZADA CON CURRENCY PROVIDER
-// ============================================
-
-// Actualización para app/layout.tsx:
-/*
-import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
-import './globals.css'
-import { AuthProvider } from '@/components/AuthProvider'
-import { AppLayout } from '@/components/AppLayout'
-import { CurrencyProvider } from '@/lib/currency-config'
-
-const inter = Inter({ subsets: ['latin'] })
-
-export const metadata: Metadata = {
-  title: 'Jett Labs - Software Factory Management',
-  description: 'Sistema de gestión integral para software factories',
-}
-
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
-  return (
-    <html lang="es">
-      <body className={inter.className}>
-        <AuthProvider>
-          <CurrencyProvider>
-            <AppLayout>
-              {children}
-            </AppLayout>
-          </CurrencyProvider>
-        </AuthProvider>
-      </body>
-    </html>
-  )
-}
-*/

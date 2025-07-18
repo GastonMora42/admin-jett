@@ -29,12 +29,13 @@ import {
 interface SidebarProps {
   isOpen: boolean
   setIsOpen: (open: boolean) => void
+  isCollapsed: boolean
+  setIsCollapsed: (collapsed: boolean) => void
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen, isCollapsed, setIsCollapsed }) => {
   const { user, logout } = useAuth()
   const pathname = usePathname()
-  const [isCollapsed, setIsCollapsed] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
 
@@ -172,6 +173,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
                 pathname={pathname}
                 user={user}
                 isCollapsed={false}
+                setIsCollapsed={setIsCollapsed}
                 userMenuOpen={userMenuOpen}
                 setUserMenuOpen={setUserMenuOpen}
                 onLinkClick={() => setIsOpen(false)}
@@ -202,6 +204,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
         pathname={pathname}
         user={user}
         isCollapsed={isCollapsed}
+        setIsCollapsed={setIsCollapsed}
         userMenuOpen={userMenuOpen}
         setUserMenuOpen={setUserMenuOpen}
         onToggleCollapse={() => setIsCollapsed(!isCollapsed)}
@@ -232,6 +235,7 @@ interface SidebarContentProps {
   pathname: string
   user: any
   isCollapsed: boolean
+  setIsCollapsed: (collapsed: boolean) => void
   userMenuOpen: boolean
   setUserMenuOpen: (open: boolean) => void
   onLinkClick?: () => void
@@ -248,6 +252,7 @@ const SidebarContent: React.FC<SidebarContentProps> = ({
   pathname,
   user,
   isCollapsed,
+  setIsCollapsed,
   userMenuOpen,
   setUserMenuOpen,
   onLinkClick,
