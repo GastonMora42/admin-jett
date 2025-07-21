@@ -1,7 +1,7 @@
-// src/app/clientes/page.tsx - VERSIÓN CORREGIDA Y MEJORADA
+// src/app/clientes/page.tsx - VERSIÓN CORREGIDA SIN BUCLES INFINITOS
 'use client'
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
   Plus, 
@@ -22,7 +22,6 @@ import {
   List,
   Download,
   Upload,
-  UserPlus,
   Activity
 } from 'lucide-react'
 import { FormularioCliente } from '@/components/FormularioCliente'
@@ -49,135 +48,200 @@ interface Proyecto {
   estadoProyecto: string
 }
 
-// Hook simple para cache invalidation (implementación básica)
-function useCacheInvalidation() {
-  const invalidateCache = useCallback((endpoint: string) => {
-    console.log(`Cache invalidated for: ${endpoint}`)
-    // En una implementación real, aquí limpiarías el cache específico
-    // Por ahora, solo loggeamos para debugging
-  }, [])
-
-  return { invalidateCache }
-}
-
 export default function ClientesPage() {
+  // Estados principales
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [filtroEstado, setFiltroEstado] = useState<string>('todos')
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+  const [showFilters, setShowFilters] = useState(false)
+  const [selectedClientes, setSelectedClientes] = useState<string[]>([])
+  
+  // Estados de UI
   const [showForm, setShowForm] = useState(false)
   const [editingCliente, setEditingCliente] = useState<Cliente | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [clienteToDelete, setClienteToDelete] = useState<Cliente | null>(null)
-  const [selectedClientes, setSelectedClientes] = useState<string[]>([])
+  
+  // Estados de control
   const [isInitialized, setIsInitialized] = useState(false)
   const [operationInProgress, setOperationInProgress] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
-  const [showFilters, setShowFilters] = useState(false)
-
+  const [localError, setLocalError] = useState<string | null>(null)
+  
+  // Refs para evitar bucles
+  const isMountedRef = useRef(true)
+  const fetchingRef = useRef(false)
+  
   const api = useApi()
-  const { invalidateCache } = useCacheInvalidation()
 
-  // Función optimizada para cargar clientes
+  // ✅ FUNCIÓN FETCH SIN DEPENDENCIAS CIRCULARES
   const fetchClientes = useCallback(async (showLoading = true) => {
+    // Prevenir llamadas múltiples simultáneas
+    if (fetchingRef.current) {
+      console.log('🔄 Fetch already in progress, skipping...')
+      return
+    }
+
+    if (!isMountedRef.current) {
+      console.log('🔄 Component unmounted, skipping fetch...')
+      return
+    }
+
     try {
+      fetchingRef.current = true
+      setLocalError(null)
+      
       console.log('🔄 Fetching clientes...')
       const data = await api.get('/api/clientes', showLoading)
+      
+      if (!isMountedRef.current) return
       
       if (Array.isArray(data)) {
         setClientes(data)
         console.log(`✅ Loaded ${data.length} clientes`)
+        
+        // Marcar como inicializado solo una vez
+        if (!isInitialized) {
+          setIsInitialized(true)
+        }
       } else {
         console.warn('⚠️ Expected array, got:', typeof data)
         setClientes([])
       }
-      
-      if (!isInitialized) {
-        setIsInitialized(true)
-      }
     } catch (error) {
       console.error('❌ Error fetching clientes:', error)
-      if (!isInitialized) {
+      if (isMountedRef.current) {
+        setLocalError(error instanceof Error ? error.message : 'Error al cargar clientes')
         setClientes([])
-        setIsInitialized(true)
+        
+        // Marcar como inicializado incluso con error
+        if (!isInitialized) {
+          setIsInitialized(true)
+        }
+      }
+    } finally {
+      fetchingRef.current = false
+    }
+  }, [api]) // ✅ SOLO depende de api, NO de isInitialized
+
+  // ✅ EFECTO INICIAL SIN BUCLE INFINITO
+  useEffect(() => {
+    let mounted = true
+    isMountedRef.current = true
+    
+    const initializeData = async () => {
+      if (mounted && !isInitialized && !fetchingRef.current) {
+        console.log('🚀 Initializing clientes data...')
+        await fetchClientes(true)
       }
     }
-  }, [api, isInitialized])
 
-  // Cargar datos iniciales
+    initializeData()
+
+    return () => {
+      mounted = false
+      isMountedRef.current = false
+    }
+  }, []) // ✅ Array vacío - solo se ejecuta una vez
+
+  // ✅ LIMPIEZA AL DESMONTAR
   useEffect(() => {
-    fetchClientes(true)
-    return () => {}
-  }, [fetchClientes])
+    return () => {
+      isMountedRef.current = false
+      fetchingRef.current = false
+    }
+  }, [])
 
-  // Manejar creación de cliente
+  // ✅ OPERACIONES CRUD OPTIMIZADAS
   const handleCreateCliente = useCallback(async (clienteData: Partial<Cliente>) => {
-    if (operationInProgress) {
-      console.log('⚠️ Operation already in progress, skipping')
+    if (operationInProgress || !isMountedRef.current) {
+      console.log('⚠️ Operation already in progress or component unmounted')
       return
     }
 
     try {
       setOperationInProgress('create')
+      setLocalError(null)
+      
       console.log('🆕 Creating cliente:', clienteData.email)
       
       await api.post('/api/clientes', clienteData, true)
       
-      invalidateCache('/api/clientes')
+      if (!isMountedRef.current) return
+      
+      // Recargar datos
       await fetchClientes(false)
       
       setShowForm(false)
       console.log('✅ Cliente created successfully')
     } catch (error) {
       console.error('❌ Error creating cliente:', error)
+      if (isMountedRef.current) {
+        setLocalError(error instanceof Error ? error.message : 'Error al crear cliente')
+      }
     } finally {
-      setOperationInProgress(null)
+      if (isMountedRef.current) {
+        setOperationInProgress(null)
+      }
     }
-  }, [api, invalidateCache, fetchClientes, operationInProgress])
+  }, [api, fetchClientes, operationInProgress])
 
-  // Manejar edición de cliente
   const handleEditCliente = useCallback(async (clienteData: Partial<Cliente>) => {
-    if (!editingCliente || operationInProgress) {
-      console.log('⚠️ No cliente to edit or operation in progress')
+    if (!editingCliente || operationInProgress || !isMountedRef.current) {
+      console.log('⚠️ No cliente to edit, operation in progress, or component unmounted')
       return
     }
     
     try {
       setOperationInProgress('edit')
+      setLocalError(null)
+      
       console.log('✏️ Editing cliente:', editingCliente.id)
       
       await api.put(`/api/clientes/${editingCliente.id}`, clienteData, true)
       
-      invalidateCache('/api/clientes')
+      if (!isMountedRef.current) return
+      
+      // Recargar datos
       await fetchClientes(false)
       
       setEditingCliente(null)
       console.log('✅ Cliente updated successfully')
     } catch (error) {
       console.error('❌ Error updating cliente:', error)
+      if (isMountedRef.current) {
+        setLocalError(error instanceof Error ? error.message : 'Error al actualizar cliente')
+      }
     } finally {
-      setOperationInProgress(null)
+      if (isMountedRef.current) {
+        setOperationInProgress(null)
+      }
     }
-  }, [editingCliente, api, invalidateCache, fetchClientes, operationInProgress])
+  }, [editingCliente, api, fetchClientes, operationInProgress])
 
-  // Manejar eliminación de cliente
   const handleDeleteCliente = useCallback((cliente: Cliente) => {
+    if (operationInProgress) return
     setClienteToDelete(cliente)
     setShowDeleteConfirm(true)
-  }, [])
+  }, [operationInProgress])
 
   const confirmDelete = useCallback(async () => {
-    if (!clienteToDelete || operationInProgress) {
-      console.log('⚠️ No cliente to delete or operation in progress')
+    if (!clienteToDelete || operationInProgress || !isMountedRef.current) {
+      console.log('⚠️ No cliente to delete, operation in progress, or component unmounted')
       return
     }
     
     try {
       setOperationInProgress('delete')
+      setLocalError(null)
+      
       console.log('🗑️ Deleting cliente:', clienteToDelete.id)
       
       await api.delete(`/api/clientes/${clienteToDelete.id}`, true)
       
-      invalidateCache('/api/clientes')
+      if (!isMountedRef.current) return
+      
+      // Recargar datos
       await fetchClientes(false)
       
       setShowDeleteConfirm(false)
@@ -185,17 +249,42 @@ export default function ClientesPage() {
       console.log('✅ Cliente deleted successfully')
     } catch (error) {
       console.error('❌ Error deleting cliente:', error)
+      if (isMountedRef.current) {
+        setLocalError(error instanceof Error ? error.message : 'Error al eliminar cliente')
+      }
     } finally {
-      setOperationInProgress(null)
+      if (isMountedRef.current) {
+        setOperationInProgress(null)
+      }
     }
-  }, [clienteToDelete, api, invalidateCache, fetchClientes, operationInProgress])
+  }, [clienteToDelete, api, fetchClientes, operationInProgress])
 
-  // Memoizar clientes filtrados para optimizar rendimiento
+  // ✅ REFRESH MANUAL
+  const handleRefresh = useCallback(async () => {
+    if (operationInProgress) return
+    console.log('🔄 Manual refresh requested')
+    await fetchClientes(true)
+  }, [fetchClientes, operationInProgress])
+
+  // ✅ CANCELAR OPERACIONES
+  const handleCancelOperation = useCallback(() => {
+    if (!operationInProgress) return
+    
+    console.log('❌ Cancelling operation:', operationInProgress)
+    setOperationInProgress(null)
+    setShowForm(false)
+    setEditingCliente(null)
+    setShowDeleteConfirm(false)
+    setClienteToDelete(null)
+    setLocalError(null)
+  }, [operationInProgress])
+
+  // ✅ MEMOIZAR CLIENTES FILTRADOS
   const filteredClientes = useMemo(() => {
     let result = clientes
 
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase()
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase().trim()
       result = result.filter(cliente =>
         cliente.nombre.toLowerCase().includes(term) ||
         cliente.email.toLowerCase().includes(term) ||
@@ -210,36 +299,7 @@ export default function ClientesPage() {
     return result
   }, [clientes, searchTerm, filtroEstado])
 
-  // Manejar refresh manual
-  const handleRefresh = useCallback(async () => {
-    invalidateCache('/api/clientes')
-    await fetchClientes(true)
-  }, [invalidateCache, fetchClientes])
-
-  // Cancelar operaciones
-  const handleCancelOperation = useCallback(() => {
-    setOperationInProgress(null)
-    setShowForm(false)
-    setEditingCliente(null)
-    setShowDeleteConfirm(false)
-    setClienteToDelete(null)
-  }, [])
-
-  // Manejar selección múltiple
-  const handleSelectAll = useCallback(() => {
-    if (selectedClientes.length === filteredClientes.length) {
-      setSelectedClientes([])
-    } else {
-      setSelectedClientes(filteredClientes.map(c => c.id))
-    }
-  }, [selectedClientes, filteredClientes])
-
-  // Estados de carga
-  const isLoading = api.loading || !isInitialized
-  const hasError = api.error && clientes.length === 0
-  const isEmpty = filteredClientes.length === 0 && !isLoading && !hasError
-
-  // Estadísticas rápidas
+  // ✅ MEMOIZAR ESTADÍSTICAS
   const stats = useMemo(() => ({
     total: clientes.length,
     activos: clientes.filter(c => c.estado === 'ACTIVO').length,
@@ -247,31 +307,63 @@ export default function ClientesPage() {
     conProyectos: clientes.filter(c => c.proyectos && c.proyectos.length > 0).length
   }), [clientes])
 
-  // Mostrar spinner inicial
-  if (isLoading && !isInitialized) {
+  // ✅ SELECCIÓN MÚLTIPLE
+  const handleSelectAll = useCallback(() => {
+    if (selectedClientes.length === filteredClientes.length) {
+      setSelectedClientes([])
+    } else {
+      setSelectedClientes(filteredClientes.map(c => c.id))
+    }
+  }, [selectedClientes.length, filteredClientes])
+
+  // ✅ CLEAR ERROR
+  const clearError = useCallback(() => {
+    setLocalError(null)
+    api.clearError()
+  }, [api])
+
+  // Estados derivados
+  const isLoading = (api.loading && !isInitialized) || operationInProgress === 'delete'
+  const hasError = (api.error || localError) && clientes.length === 0 && isInitialized
+  const isEmpty = filteredClientes.length === 0 && !isLoading && !hasError && isInitialized
+  const error = localError || api.error
+
+  // ✅ LOADING INICIAL
+  if (!isInitialized && api.loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <LoadingSpinner />
+        <div className="text-center">
+          <LoadingSpinner />
+          <p className="text-gray-400 mt-4">Cargando clientes...</p>
+        </div>
       </div>
     )
   }
 
-  // Mostrar error si falló la carga inicial
+  // ✅ ERROR INICIAL
   if (hasError) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center">
           <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
           <h2 className="text-xl font-semibold text-white mb-2">Error al cargar datos</h2>
-          <p className="text-gray-400 mb-4">{api.error}</p>
-          <button 
-            onClick={handleRefresh}
-            className="btn-primary"
-            disabled={api.loading}
-          >
-            <RefreshCw className={`w-4 h-4 mr-2 ${api.loading ? 'animate-spin' : ''}`} />
-            {api.loading ? 'Cargando...' : 'Reintentar'}
-          </button>
+          <p className="text-gray-400 mb-4">{error}</p>
+          <div className="flex gap-3 justify-center">
+            <button 
+              onClick={clearError}
+              className="btn-secondary"
+            >
+              Limpiar Error
+            </button>
+            <button 
+              onClick={handleRefresh}
+              className="btn-primary"
+              disabled={api.loading || !!operationInProgress}
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${api.loading ? 'animate-spin' : ''}`} />
+              Reintentar
+            </button>
+          </div>
         </div>
       </div>
     )
@@ -283,7 +375,7 @@ export default function ClientesPage() {
       animate={{ opacity: 1, y: 0 }}
       className="space-y-6"
     >
-      {/* Header mejorado con estadísticas */}
+      {/* Header mejorado */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-white mb-2">Clientes</h1>
@@ -304,14 +396,14 @@ export default function ClientesPage() {
         </div>
         
         <div className="flex flex-wrap items-center gap-3">
-          {/* Indicador de operación en progreso */}
+          {/* Indicador de operación */}
           {operationInProgress && (
             <div className="flex items-center space-x-2 px-3 py-2 bg-blue-500/10 border border-blue-500/30 rounded-lg">
               <div className="w-4 h-4 border-2 border-blue-400/20 border-t-blue-400 rounded-full animate-spin" />
-              <span className="text-blue-400 text-sm capitalize">
-                {operationInProgress === 'create' && 'Creando cliente...'}
-                {operationInProgress === 'edit' && 'Actualizando cliente...'}
-                {operationInProgress === 'delete' && 'Eliminando cliente...'}
+              <span className="text-blue-400 text-sm">
+                {operationInProgress === 'create' && 'Creando...'}
+                {operationInProgress === 'edit' && 'Actualizando...'}
+                {operationInProgress === 'delete' && 'Eliminando...'}
               </span>
               <button
                 onClick={handleCancelOperation}
@@ -342,43 +434,53 @@ export default function ClientesPage() {
             </button>
           </div>
 
-          {/* Botones de acción */}
-          <div className="flex items-center gap-2">
-            <button className="btn-secondary">
-              <Upload className="w-4 h-4 mr-2" />
-              <span className="hidden sm:inline">Importar</span>
-            </button>
-            
-            <button className="btn-secondary">
-              <Download className="w-4 h-4 mr-2" />
-              <span className="hidden sm:inline">Exportar</span>
-            </button>
-
-            <button
-              onClick={handleRefresh}
-              className="btn-secondary"
-              disabled={api.loading || !!operationInProgress}
-            >
-              <RefreshCw className={`w-4 h-4 mr-2 ${api.loading ? 'animate-spin' : ''}`} />
-              <span className="hidden sm:inline">Actualizar</span>
-            </button>
-            
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => setShowForm(true)}
-              className="btn-primary"
-              disabled={api.loading || !!operationInProgress}
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              <span className="hidden sm:inline">Nuevo</span>
-              <span className="sm:hidden">Cliente</span>
-            </motion.button>
-          </div>
+          <button
+            onClick={handleRefresh}
+            className="btn-secondary"
+            disabled={api.loading || !!operationInProgress}
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${api.loading ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">Actualizar</span>
+          </button>
+          
+          <motion.button
+            whileHover={{ scale: !!operationInProgress ? 1 : 1.05 }}
+            whileTap={{ scale: !!operationInProgress ? 1 : 0.95 }}
+            onClick={() => setShowForm(true)}
+            className="btn-primary"
+            disabled={!!operationInProgress}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            <span className="hidden sm:inline">Nuevo</span>
+            <span className="sm:hidden">Cliente</span>
+          </motion.button>
         </div>
       </div>
 
-      {/* Barra de búsqueda y filtros mejorada */}
+      {/* Error banner */}
+      {error && clientes.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 flex items-center justify-between"
+        >
+          <div className="flex items-center space-x-3">
+            <AlertCircle className="w-5 h-5 text-red-400" />
+            <div>
+              <p className="text-red-400 font-medium">Error</p>
+              <p className="text-red-300 text-sm">{error}</p>
+            </div>
+          </div>
+          <button
+            onClick={clearError}
+            className="text-red-400 hover:text-red-300 transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </motion.div>
+      )}
+
+      {/* Búsqueda y filtros */}
       <div className="card p-4">
         <div className="flex flex-col lg:flex-row lg:items-center gap-4">
           <div className="flex-1 relative">
@@ -424,47 +526,6 @@ export default function ClientesPage() {
           </div>
         </div>
         
-        {/* Filtros avanzados (colapsables) */}
-        <AnimatePresence>
-          {showFilters && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="mt-4 pt-4 border-t border-white/10"
-            >
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm text-gray-400 mb-2">Fecha de registro</label>
-                  <select className="input-glass w-full">
-                    <option>Todo el tiempo</option>
-                    <option>Última semana</option>
-                    <option>Último mes</option>
-                    <option>Últimos 3 meses</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-400 mb-2">Con proyectos</label>
-                  <select className="input-glass w-full">
-                    <option>Todos</option>
-                    <option>Con proyectos</option>
-                    <option>Sin proyectos</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-400 mb-2">Ordenar por</label>
-                  <select className="input-glass w-full">
-                    <option>Fecha de registro</option>
-                    <option>Nombre A-Z</option>
-                    <option>Nombre Z-A</option>
-                    <option>Última actividad</option>
-                  </select>
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-        
         {/* Selección múltiple */}
         {selectedClientes.length > 0 && (
           <motion.div
@@ -479,25 +540,25 @@ export default function ClientesPage() {
               <button
                 onClick={handleSelectAll}
                 className="text-blue-400 hover:text-blue-300 text-sm"
+                disabled={!!operationInProgress}
               >
                 {selectedClientes.length === filteredClientes.length ? 'Deseleccionar todo' : 'Seleccionar todo'}
               </button>
             </div>
             <div className="flex items-center space-x-2">
-              <button className="btn-secondary text-green-400 text-sm">
+              <button 
+                className="btn-secondary text-green-400 text-sm"
+                disabled={!!operationInProgress}
+              >
                 <Mail className="w-4 h-4 mr-1" />
                 Enviar email
               </button>
-              <button className="btn-secondary text-blue-400 text-sm">
-                <Download className="w-4 h-4 mr-1" />
-                Exportar
-              </button>
               <button 
-                className="btn-secondary text-red-400 text-sm"
+                className="btn-secondary text-blue-400 text-sm"
                 disabled={!!operationInProgress}
               >
-                <Trash2 className="w-4 h-4 mr-1" />
-                Eliminar
+                <Download className="w-4 h-4 mr-1" />
+                Exportar
               </button>
             </div>
           </motion.div>
@@ -557,7 +618,7 @@ export default function ClientesPage() {
         </>
       )}
 
-      {/* Formulario de cliente mejorado */}
+      {/* Formulario de cliente */}
       <FormularioCliente
         isOpen={showForm || !!editingCliente}
         onClose={() => {
@@ -591,7 +652,7 @@ export default function ClientesPage() {
   )
 }
 
-// Componente de tarjeta de cliente mejorado
+// ✅ COMPONENTE CLIENTE CARD OPTIMIZADO
 const ClienteCard: React.FC<{
   cliente: Cliente
   index: number
@@ -620,7 +681,7 @@ const ClienteCard: React.FC<{
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -20 }}
       transition={{ delay: index * 0.05 }}
-      whileHover={{ y: -4 }}
+      whileHover={{ y: disabled ? 0 : -4 }}
       className={`card relative group cursor-pointer transition-all hover:shadow-2xl ${
         isSelected ? 'ring-2 ring-blue-500 bg-blue-500/5' : ''
       } ${disabled ? 'opacity-50 pointer-events-none' : ''}`}
@@ -756,7 +817,7 @@ const ClienteCard: React.FC<{
   )
 })
 
-// Componente de tabla (simplificado para este ejemplo)
+// ✅ COMPONENTE TABLA SIMPLIFICADO
 const ClientesTable: React.FC<{
   clientes: Cliente[]
   selectedClientes: string[]
@@ -764,7 +825,14 @@ const ClientesTable: React.FC<{
   onEdit: (cliente: Cliente) => void
   onDelete: (cliente: Cliente) => void
   disabled: boolean
-}> = ({ clientes, selectedClientes, onSelectCliente, onEdit, onDelete, disabled }) => {
+}> = React.memo(function ClientesTable({ 
+  clientes, 
+  selectedClientes, 
+  onSelectCliente, 
+  onEdit, 
+  onDelete, 
+  disabled 
+}) {
   return (
     <div className="card overflow-hidden">
       <div className="overflow-x-auto">
@@ -851,4 +919,4 @@ const ClientesTable: React.FC<{
       </div>
     </div>
   )
-}
+})
