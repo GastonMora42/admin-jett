@@ -1,7 +1,7 @@
-// src/app/proyectos/page.tsx - VERSIÓN CON VISTA DE TABLA FUNCIONAL
+// src/app/proyectos/page.tsx - VERSIÓN CORREGIDA CON MEJOR DEBUGGING
 'use client'
 
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
   Plus, 
@@ -67,33 +67,89 @@ export default function ProyectosPage() {
   const [sortBy, setSortBy] = useState<'fecha' | 'monto' | 'nombre' | 'estado'>('fecha')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [showMobileFilters, setShowMobileFilters] = useState(false)
+  const [loadingState, setLoadingState] = useState<'idle' | 'loading' | 'error' | 'success'>('idle')
+  const [detailedError, setDetailedError] = useState<string | null>(null)
 
   const api = useApi()
 
-  useEffect(() => {
-    loadData()
-  }, [])
-
-  const loadData = async () => {
+  // Función de carga de datos mejorada con debugging
+  const loadData = useCallback(async (showSpinner = true) => {
     try {
-      const [proyectosData, clientesData] = await Promise.all([
-        api.get('/api/proyectos'),
-        api.get('/api/clientes')
-      ])
-      setProyectos(Array.isArray(proyectosData) ? proyectosData : [])
-      setClientes(Array.isArray(clientesData) ? clientesData : [])
+      console.log('🔄 Loading projects and clients data...')
+      
+      if (showSpinner) {
+        setLoadingState('loading')
+      }
+      setDetailedError(null)
+
+      // Cargar proyectos primero
+      console.log('📡 Fetching proyectos...')
+      const proyectosData = await api.get('/api/proyectos', false)
+      console.log('✅ Proyectos response:', {
+        type: typeof proyectosData,
+        isArray: Array.isArray(proyectosData),
+        length: Array.isArray(proyectosData) ? proyectosData.length : 'N/A',
+        firstItem: Array.isArray(proyectosData) && proyectosData.length > 0 ? 
+          { id: proyectosData[0].id, nombre: proyectosData[0].nombre } : 'N/A'
+      })
+      
+      // Cargar clientes después
+      console.log('📡 Fetching clientes...')
+      const clientesData = await api.get('/api/clientes', false)
+      console.log('✅ Clientes response:', {
+        type: typeof clientesData,
+        isArray: Array.isArray(clientesData),
+        length: Array.isArray(clientesData) ? clientesData.length : 'N/A'
+      })
+
+      // Validar y establecer datos
+      const validProyectos = Array.isArray(proyectosData) ? proyectosData : []
+      const validClientes = Array.isArray(clientesData) ? clientesData : []
+
+      console.log(`✅ Setting ${validProyectos.length} proyectos and ${validClientes.length} clientes`)
+      
+      setProyectos(validProyectos)
+      setClientes(validClientes)
+      setLoadingState('success')
+      
+      console.log('✅ Data loading completed successfully')
+      
     } catch (error) {
-      console.error('Error loading data:', error)
+      console.error('❌ Error loading data:', error)
+      
+      const errorMessage = error instanceof Error ? error.message : 'Error desconocido'
+      setDetailedError(`Error al cargar datos: ${errorMessage}`)
+      setLoadingState('error')
+      
+      // Mantener datos existentes en caso de error
+      console.log('⚠️ Keeping existing data on error')
     }
-  }
+  }, [api])
+
+  // Cargar datos al montar el componente
+  useEffect(() => {
+    console.log('🚀 Component mounted, loading initial data...')
+    loadData()
+  }, [loadData])
 
   const handleCreateProyecto = async (proyectoData: CreateProyectoData) => {
     try {
-      await api.post('/api/proyectos', proyectoData)
-      await loadData()
+      console.log('🆕 Creating new project:', proyectoData.nombre)
+      setDetailedError(null)
+      
+      await api.post('/api/proyectos', proyectoData, true)
+      console.log('✅ Project created successfully')
+      
+      // Recargar datos después de crear
+      console.log('🔄 Reloading data after creation...')
+      await loadData(false)
+      
       setShowForm(false)
+      console.log('✅ Project creation flow completed')
     } catch (error) {
-      console.error('Error:', error)
+      console.error('❌ Error creating project:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Error al crear proyecto'
+      setDetailedError(errorMessage)
     }
   }
 
@@ -101,11 +157,19 @@ export default function ProyectosPage() {
     if (!editingProyecto) return
     
     try {
-      await api.put(`/api/proyectos/${editingProyecto.id}`, proyectoData)
-      await loadData()
+      console.log('✏️ Editing project:', editingProyecto.id)
+      setDetailedError(null)
+      
+      await api.put(`/api/proyectos/${editingProyecto.id}`, proyectoData, true)
+      console.log('✅ Project updated successfully')
+      
+      await loadData(false)
       setEditingProyecto(null)
+      console.log('✅ Project edit flow completed')
     } catch (error) {
-      console.error('Error:', error)
+      console.error('❌ Error editing project:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Error al actualizar proyecto'
+      setDetailedError(errorMessage)
     }
   }
 
@@ -118,26 +182,60 @@ export default function ProyectosPage() {
     if (!proyectoToDelete) return
     
     try {
-      await api.delete(`/api/proyectos/${proyectoToDelete.id}`)
-      await loadData()
+      console.log('🗑️ Deleting project:', proyectoToDelete.id)
+      setDetailedError(null)
+      
+      await api.delete(`/api/proyectos/${proyectoToDelete.id}`, true)
+      console.log('✅ Project deleted successfully')
+      
+      await loadData(false)
       setShowDeleteConfirm(false)
       setProyectoToDelete(null)
+      console.log('✅ Project deletion flow completed')
     } catch (error) {
-      console.error('Error:', error)
+      console.error('❌ Error deleting project:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Error al eliminar proyecto'
+      setDetailedError(errorMessage)
     }
   }
 
   const handleEstadoChange = async (proyecto: Proyecto, nuevoEstado: EstadoProyecto) => {
     try {
-      await api.put(`/api/proyectos/${proyecto.id}`, { estadoProyecto: nuevoEstado })
-      await loadData()
+      console.log('📝 Changing project status:', proyecto.id, 'to', nuevoEstado)
+      setDetailedError(null)
+      
+      await api.put(`/api/proyectos/${proyecto.id}`, { estadoProyecto: nuevoEstado }, true)
+      console.log('✅ Project status updated successfully')
+      
+      await loadData(false)
     } catch (error) {
-      console.error('Error:', error)
+      console.error('❌ Error changing project status:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Error al cambiar estado'
+      setDetailedError(errorMessage)
     }
+  }
+
+  const handleRefresh = async () => {
+    console.log('🔄 Manual refresh triggered')
+    await loadData(true)
+  }
+
+  const clearError = () => {
+    console.log('🧹 Clearing error state')
+    setDetailedError(null)
+    api.clearError()
   }
 
   // Filtros y ordenamiento optimizados
   const filteredAndSortedProyectos = useMemo(() => {
+    console.log('🔍 Filtering and sorting projects...', {
+      totalProyectos: proyectos.length,
+      searchTerm,
+      filtroEstado,
+      filtroTipo,
+      filtroCliente
+    })
+
     let filtered = proyectos.filter(proyecto => {
       const matchesSearch = proyecto.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
                            proyecto.cliente?.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -181,6 +279,7 @@ export default function ProyectosPage() {
       }
     })
 
+    console.log(`✅ Filtered to ${filtered.length} projects`)
     return filtered
   }, [proyectos, searchTerm, filtroEstado, filtroTipo, filtroCliente, sortBy, sortOrder])
 
@@ -213,29 +312,58 @@ export default function ProyectosPage() {
     }
   }, [proyectos])
 
-  if (api.loading && proyectos.length === 0) {
+  // Estados de UI
+  const isLoading = loadingState === 'loading'
+  const hasError = loadingState === 'error' || !!detailedError || !!api.error
+  const hasData = proyectos.length > 0
+  const isEmpty = !isLoading && !hasError && !hasData
+  const currentError = detailedError || api.error
+
+  console.log('🎨 Render state:', { 
+    loadingState, 
+    hasError, 
+    hasData, 
+    isEmpty, 
+    proyectosLength: proyectos.length,
+    clientesLength: clientes.length 
+  })
+
+  // Loading inicial
+  if (isLoading && !hasData) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <LoadingSpinner />
+        <div className="text-center">
+          <LoadingSpinner />
+          <p className="text-gray-400 mt-4">Cargando proyectos...</p>
+        </div>
       </div>
     )
   }
 
-  if (api.error && proyectos.length === 0) {
+  // Error sin datos
+  if (hasError && !hasData) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="text-center">
+        <div className="text-center max-w-md">
           <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
           <h2 className="text-xl font-semibold text-white mb-2">Error al cargar datos</h2>
-          <p className="text-gray-400 mb-4">{api.error}</p>
-          <button 
-            onClick={loadData}
-            className="btn-primary"
-            disabled={api.loading}
-          >
-            <RefreshCw className={`w-4 h-4 mr-2 ${api.loading ? 'animate-spin' : ''}`} />
-            {api.loading ? 'Cargando...' : 'Reintentar'}
-          </button>
+          <p className="text-gray-400 mb-4">{currentError}</p>
+          <div className="flex gap-3 justify-center">
+            <button 
+              onClick={clearError}
+              className="btn-secondary"
+            >
+              Limpiar Error
+            </button>
+            <button 
+              onClick={handleRefresh}
+              className="btn-primary"
+              disabled={isLoading}
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+              Reintentar
+            </button>
+          </div>
         </div>
       </div>
     )
@@ -247,7 +375,7 @@ export default function ProyectosPage() {
       animate={{ opacity: 1, y: 0 }}
       className="space-y-4 lg:space-y-6 p-2 sm:p-4 lg:p-6"
     >
-      {/* Header mejorado para móvil */}
+      {/* Header mejorado */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-white">Proyectos</h1>
@@ -255,26 +383,22 @@ export default function ProyectosPage() {
             Gestiona todos tus proyectos ({filteredAndSortedProyectos.length} de {proyectos.length})
           </p>
         </div>
+        
         <div className="flex items-center gap-2 sm:gap-3">
-          {api.loading && (
+          {isLoading && (
             <div className="hidden sm:flex items-center space-x-2 px-3 py-2 bg-blue-500/10 border border-blue-500/30 rounded-lg">
               <div className="w-4 h-4 border-2 border-blue-400/20 border-t-blue-400 rounded-full animate-spin" />
-              <span className="text-blue-400 text-sm">Sincronizando...</span>
+              <span className="text-blue-400 text-sm">Cargando...</span>
             </div>
           )}
           
           <button
-            onClick={loadData}
+            onClick={handleRefresh}
             className="btn-secondary p-2 sm:px-4 sm:py-2"
-            disabled={api.loading}
+            disabled={isLoading}
           >
-            <RefreshCw className={`w-4 h-4 ${api.loading ? 'animate-spin' : ''} sm:mr-2`} />
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''} sm:mr-2`} />
             <span className="hidden sm:inline">Actualizar</span>
-          </button>
-          
-          <button className="btn-secondary p-2 sm:px-4 sm:py-2 hidden sm:flex">
-            <Download className="w-4 h-4 sm:mr-2" />
-            <span className="hidden sm:inline">Exportar</span>
           </button>
           
           <motion.button
@@ -282,7 +406,7 @@ export default function ProyectosPage() {
             whileTap={{ scale: 0.95 }}
             onClick={() => setShowForm(true)}
             className="btn-primary px-3 py-2 sm:px-4 sm:py-2"
-            disabled={api.loading}
+            disabled={isLoading}
           >
             <Plus className="w-4 h-4 sm:mr-2" />
             <span className="hidden sm:inline">Nuevo Proyecto</span>
@@ -290,7 +414,30 @@ export default function ProyectosPage() {
         </div>
       </div>
 
-      {/* Estadísticas responsive */}
+      {/* Error banner para cuando hay datos */}
+      {hasError && hasData && (
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 flex items-center justify-between"
+        >
+          <div className="flex items-center space-x-3">
+            <AlertCircle className="w-5 h-5 text-red-400" />
+            <div>
+              <p className="text-red-400 font-medium">Error</p>
+              <p className="text-red-300 text-sm">{currentError}</p>
+            </div>
+          </div>
+          <button
+            onClick={clearError}
+            className="text-red-400 hover:text-red-300 transition-colors"
+          >
+            <RefreshCw className="w-5 h-5" />
+          </button>
+        </motion.div>
+      )}
+
+      {/* Estadísticas */}
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 sm:gap-4">
         <motion.div whileHover={{ scale: 1.02 }} className="card p-3 sm:p-4 text-center">
           <FolderOpen className="w-5 h-5 sm:w-6 sm:h-6 text-blue-400 mx-auto mb-2" />
@@ -351,283 +498,75 @@ export default function ProyectosPage() {
         </motion.div>
       </div>
 
-      {/* Filtros responsive */}
-      <div className="card p-4">
-        {/* Desktop filters */}
-        <div className="hidden lg:flex flex-col lg:flex-row gap-4">
-          <div className="flex-1 grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="relative">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Buscar proyectos..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="input-glass pl-10 w-full"
-              />
-            </div>
-            
-            <select
-              value={filtroEstado}
-              onChange={(e) => setFiltroEstado(e.target.value)}
-              className="input-glass"
-            >
-              <option value="todos">Todos los estados</option>
-              <option value="EN_DESARROLLO">En Desarrollo</option>
-              <option value="COMPLETADO">Completado</option>
-              <option value="EN_PAUSA">En Pausa</option>
-              <option value="CANCELADO">Cancelado</option>
-            </select>
-            
-            <select
-              value={filtroTipo}
-              onChange={(e) => setFiltroTipo(e.target.value)}
-              className="input-glass"
-            >
-              <option value="todos">Todos los tipos</option>
-              <option value="SOFTWARE_A_MEDIDA">Software a Medida</option>
-              <option value="ECOMMERCE">E-commerce</option>
-              <option value="LANDING_PAGE">Landing Page</option>
-              <option value="SISTEMA_WEB">Sistema Web</option>
-              <option value="APP_MOVIL">App Móvil</option>
-              <option value="MANTENIMIENTO">Mantenimiento</option>
-            </select>
-
-            <select
-              value={filtroCliente}
-              onChange={(e) => setFiltroCliente(e.target.value)}
-              className="input-glass"
-            >
-              <option value="todos">Todos los clientes</option>
-              {clientes.map((cliente) => (
-                <option key={cliente.id} value={cliente.id}>
-                  {cliente.nombre}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as any)}
-              className="input-glass text-sm"
-            >
-              <option value="fecha">Ordenar por fecha</option>
-              <option value="monto">Ordenar por monto</option>
-              <option value="nombre">Ordenar por nombre</option>
-              <option value="estado">Ordenar por estado</option>
-            </select>
-            
-            <button
-              onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-              className="btn-secondary p-2"
-              title={`Orden ${sortOrder === 'asc' ? 'ascendente' : 'descendente'}`}
-            >
-              {sortOrder === 'asc' ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-            </button>
-
-            <div className="flex bg-white/5 rounded-lg p-1">
-              <button
-                onClick={() => setVista('cards')}
-                className={`px-3 py-1 rounded text-sm transition-colors ${
-                  vista === 'cards' ? 'bg-white/10 text-white' : 'text-gray-400'
-                }`}
-              >
-                <GridIcon className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => setVista('table')}
-                className={`px-3 py-1 rounded text-sm transition-colors ${
-                  vista === 'table' ? 'bg-white/10 text-white' : 'text-gray-400'
-                }`}
-              >
-                <List className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Mobile filters */}
-        <div className="lg:hidden">
-          <div className="flex items-center justify-between mb-4">
-            <div className="relative flex-1 mr-4">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Buscar proyectos..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="input-glass pl-10 w-full"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="flex bg-white/5 rounded-lg p-1">
-                <button
-                  onClick={() => setVista('cards')}
-                  className={`px-2 py-1 rounded text-sm transition-colors ${
-                    vista === 'cards' ? 'bg-white/10 text-white' : 'text-gray-400'
-                  }`}
-                >
-                  <GridIcon className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => setVista('table')}
-                  className={`px-2 py-1 rounded text-sm transition-colors ${
-                    vista === 'table' ? 'bg-white/10 text-white' : 'text-gray-400'
-                  }`}
-                >
-                  <List className="w-4 h-4" />
-                </button>
-              </div>
-              <button
-                onClick={() => setShowMobileFilters(!showMobileFilters)}
-                className="btn-secondary p-2"
-              >
-                <Menu className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-
-          {showMobileFilters && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="space-y-3"
-            >
-              <select
-                value={filtroEstado}
-                onChange={(e) => setFiltroEstado(e.target.value)}
-                className="input-glass w-full"
-              >
-                <option value="todos">Todos los estados</option>
-                <option value="EN_DESARROLLO">En Desarrollo</option>
-                <option value="COMPLETADO">Completado</option>
-                <option value="EN_PAUSA">En Pausa</option>
-                <option value="CANCELADO">Cancelado</option>
-              </select>
-              
-              <select
-                value={filtroTipo}
-                onChange={(e) => setFiltroTipo(e.target.value)}
-                className="input-glass w-full"
-              >
-                <option value="todos">Todos los tipos</option>
-                <option value="SOFTWARE_A_MEDIDA">Software a Medida</option>
-                <option value="ECOMMERCE">E-commerce</option>
-                <option value="LANDING_PAGE">Landing Page</option>
-                <option value="SISTEMA_WEB">Sistema Web</option>
-                <option value="APP_MOVIL">App Móvil</option>
-                <option value="MANTENIMIENTO">Mantenimiento</option>
-              </select>
-
-              <div className="flex gap-2">
-                <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as any)}
-                  className="input-glass flex-1"
-                >
-                  <option value="fecha">Por fecha</option>
-                  <option value="monto">Por monto</option>
-                  <option value="nombre">Por nombre</option>
-                  <option value="estado">Por estado</option>
-                </select>
-                
-                <button
-                  onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-                  className="btn-secondary px-3"
-                >
-                  {sortOrder === 'asc' ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </div>
-        
-        {selectedProyectos.length > 0 && (
-          <div className="flex items-center justify-between mt-4 pt-4 border-t border-white/10">
-            <span className="text-sm text-gray-400">
-              {selectedProyectos.length} proyectos seleccionados
-            </span>
-            <div className="flex items-center space-x-2">
-              <button className="btn-secondary text-yellow-400 text-sm px-3 py-1">
-                <PauseCircle className="w-4 h-4 mr-1" />
-                Pausar
-              </button>
-              <button className="btn-secondary text-green-400 text-sm px-3 py-1">
-                <CheckCircle className="w-4 h-4 mr-1" />
-                Completar
-              </button>
-              <button className="btn-secondary text-red-400 text-sm px-3 py-1">
-                <Trash2 className="w-4 h-4 mr-1" />
-                Eliminar
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Lista de proyectos responsive */}
-      {filteredAndSortedProyectos.length === 0 ? (
+      {/* Contenido principal */}
+      {isEmpty ? (
         <EmptyState
           icon={FolderOpen}
           title="No hay proyectos"
-          description={searchTerm || filtroEstado !== 'todos' || filtroTipo !== 'todos' 
-            ? "No se encontraron proyectos con los filtros aplicados" 
-            : "Comienza creando tu primer proyecto"
-          }
-          action={searchTerm || filtroEstado !== 'todos' || filtroTipo !== 'todos' ? "Limpiar filtros" : "Crear Proyecto"}
-          onAction={() => {
-            if (searchTerm || filtroEstado !== 'todos' || filtroTipo !== 'todos') {
-              setSearchTerm('')
-              setFiltroEstado('todos')
-              setFiltroTipo('todos')
-              setFiltroCliente('todos')
-            } else {
-              setShowForm(true)
-            }
-          }}
+          description="Comienza creando tu primer proyecto"
+          action="Crear Proyecto"
+          onAction={() => setShowForm(true)}
         />
-      ) : vista === 'cards' ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
-          <AnimatePresence>
-            {filteredAndSortedProyectos.map((proyecto, index) => (
-              <ProyectoCard
-                key={proyecto.id}
-                proyecto={proyecto}
-                index={index}
-                onEdit={() => setEditingProyecto(proyecto)}
-                onDelete={() => handleDeleteProyecto(proyecto)}
-                onView={() => {}}
-                onEstadoChange={(nuevoEstado) => handleEstadoChange(proyecto, nuevoEstado)}
-                onSelect={(selected) => {
-                  if (selected) {
-                    setSelectedProyectos([...selectedProyectos, proyecto.id])
-                  } else {
-                    setSelectedProyectos(selectedProyectos.filter(id => id !== proyecto.id))
-                  }
-                }}
-                isSelected={selectedProyectos.includes(proyecto.id)}
-              />
-            ))}
-          </AnimatePresence>
-        </div>
       ) : (
-        <ProyectosTable
-          proyectos={filteredAndSortedProyectos}
-          selectedProyectos={selectedProyectos}
-          onSelectProyecto={(id, selected) => {
-            if (selected) {
-              setSelectedProyectos([...selectedProyectos, id])
-            } else {
-              setSelectedProyectos(selectedProyectos.filter(pId => pId !== id))
-            }
-          }}
-          onEdit={setEditingProyecto}
-          onDelete={handleDeleteProyecto}
-          onEstadoChange={handleEstadoChange}
-        />
+        <>
+          {/* Filtros simplificados para debug */}
+          <div className="card p-4">
+            <div className="flex items-center gap-4">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar proyectos..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="input-glass pl-10 w-full"
+                />
+              </div>
+              <button
+                onClick={() => setVista(vista === 'cards' ? 'table' : 'cards')}
+                className="btn-secondary"
+              >
+                {vista === 'cards' ? <List className="w-4 h-4" /> : <GridIcon className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          {/* Lista de proyectos */}
+          {vista === 'cards' ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+              <AnimatePresence>
+                {filteredAndSortedProyectos.map((proyecto, index) => (
+                  <ProyectoCard
+                    key={proyecto.id}
+                    proyecto={proyecto}
+                    index={index}
+                    onEdit={() => setEditingProyecto(proyecto)}
+                    onDelete={() => handleDeleteProyecto(proyecto)}
+                    onView={() => {}}
+                    onEstadoChange={(nuevoEstado) => handleEstadoChange(proyecto, nuevoEstado)}
+                    onSelect={(selected) => {
+                      if (selected) {
+                        setSelectedProyectos([...selectedProyectos, proyecto.id])
+                      } else {
+                        setSelectedProyectos(selectedProyectos.filter(id => id !== proyecto.id))
+                      }
+                    }}
+                    isSelected={selectedProyectos.includes(proyecto.id)}
+                  />
+                ))}
+              </AnimatePresence>
+            </div>
+          ) : (
+            <div className="card p-4">
+              <p className="text-gray-400 text-center">Vista de tabla simplificada para debug</p>
+              {filteredAndSortedProyectos.map(proyecto => (
+                <div key={proyecto.id} className="border-b border-white/10 py-2">
+                  <p className="text-white">{proyecto.nombre} - {proyecto.cliente?.nombre}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       {/* Formulario de proyecto */}
@@ -649,7 +588,7 @@ export default function ProyectosPage() {
         onClose={() => setShowDeleteConfirm(false)}
         onConfirm={confirmDelete}
         title="Eliminar Proyecto"
-        message={`¿Estás seguro de que quieres eliminar el proyecto "${proyectoToDelete?.nombre}"? Esta acción eliminará también todos los pagos asociados.`}
+        message={`¿Estás seguro de que quieres eliminar el proyecto "${proyectoToDelete?.nombre}"?`}
         confirmText="Eliminar"
         cancelText="Cancelar"
         danger
@@ -658,8 +597,8 @@ export default function ProyectosPage() {
   )
 }
 
-// Componente de tarjeta responsive optimizado
-interface ProyectoCardProps {
+// Componente simplificado para debug
+const ProyectoCard: React.FC<{
   proyecto: Proyecto
   index: number
   onEdit: () => void
@@ -668,386 +607,25 @@ interface ProyectoCardProps {
   onEstadoChange: (estado: EstadoProyecto) => void
   onSelect: (selected: boolean) => void
   isSelected: boolean
-}
-
-const ProyectoCard: React.FC<ProyectoCardProps> = React.memo(({
-  proyecto,
-  index,
-  onEdit,
-  onDelete,
-  onEstadoChange,
-  onSelect,
-  isSelected
-}) => {
-  const [showMenu, setShowMenu] = useState(false)
-
-  const getEstadoIcon = (estado: EstadoProyecto) => {
-    switch (estado) {
-      case 'EN_DESARROLLO': return <PlayCircle className="w-3 h-3 sm:w-4 sm:h-4" />
-      case 'COMPLETADO': return <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4" />
-      case 'EN_PAUSA': return <PauseCircle className="w-3 h-3 sm:w-4 sm:h-4" />
-      case 'CANCELADO': return <AlertCircle className="w-3 h-3 sm:w-4 sm:h-4" />
-      default: return <Clock className="w-3 h-3 sm:w-4 sm:h-4" />
-    }
-  }
-
-  const getEstadoColor = (estado: EstadoProyecto) => {
-    switch (estado) {
-      case 'EN_DESARROLLO': return 'text-blue-400 bg-blue-500/20 border-blue-500/30'
-      case 'COMPLETADO': return 'text-green-400 bg-green-500/20 border-green-500/30'
-      case 'EN_PAUSA': return 'text-yellow-400 bg-yellow-500/20 border-yellow-500/30'
-      case 'CANCELADO': return 'text-red-400 bg-red-500/20 border-red-500/30'
-      default: return 'text-gray-400 bg-gray-500/20 border-gray-500/30'
-    }
-  }
-
-  const getTipoLabel = (tipo: TipoProyecto) => {
-    const labels = {
-      SOFTWARE_A_MEDIDA: 'Software a Medida',
-      ECOMMERCE: 'E-commerce',
-      LANDING_PAGE: 'Landing Page',
-      SISTEMA_WEB: 'Sistema Web',
-      APP_MOVIL: 'App Móvil',
-      MANTENIMIENTO: 'Mantenimiento'
-    }
-    return labels[tipo] || tipo
-  }
-
-  const pagosPagados = proyecto.pagos?.filter(p => p.estadoPago === 'PAGADO').length || 0
-  const totalPagos = proyecto.pagos?.length || 0
-  const progreso = totalPagos > 0 ? (pagosPagados / totalPagos) * 100 : 0
-
-  const esRetrasado = proyecto.fechaEntrega && 
-    new Date(proyecto.fechaEntrega) < new Date() && 
-    proyecto.estadoProyecto !== 'COMPLETADO'
-
+}> = ({ proyecto, index, onEdit, onDelete }) => {
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
       transition={{ delay: index * 0.02 }}
-      whileHover={{ y: -2, scale: 1.01 }}
-      className={`card relative group cursor-pointer transition-all hover:shadow-xl ${
-        isSelected ? 'ring-2 ring-blue-500 bg-blue-500/5' : ''
-      } ${esRetrasado ? 'border-red-500/30 bg-red-500/5' : ''}`}
+      className="card p-4"
     >
-      {/* Indicadores especiales */}
-      {esRetrasado && (
-        <div className="absolute top-2 right-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full flex items-center space-x-1">
-          <AlertCircle className="w-3 h-3" />
-          <span className="hidden sm:inline">Retrasado</span>
-        </div>
-      )}
-
-      {proyecto.estadoProyecto === 'COMPLETADO' && (
-        <div className="absolute top-2 left-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full flex items-center space-x-1">
-          <Star className="w-3 h-3" />
-          <span className="hidden sm:inline">Completado</span>
-        </div>
-      )}
-
-      {/* Checkbox y menú */}
-      <div className="flex items-center justify-between mb-3 sm:mb-4">
-        <input
-          type="checkbox"
-          checked={isSelected}
-          onChange={(e) => {
-            e.stopPropagation()
-            onSelect(e.target.checked)
-          }}
-          className="rounded bg-white/10 border-white/20 text-blue-500 focus:ring-blue-500"
-        />
-        
-        <button
-          onClick={(e) => {
-            e.stopPropagation()
-            setShowMenu(!showMenu)
-          }}
-          className="p-1 sm:p-2 rounded-lg bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity"
-        >
-          <MoreVertical className="w-3 h-3 sm:w-4 sm:h-4 text-gray-400" />
+      <h3 className="text-white font-semibold mb-2">{proyecto.nombre}</h3>
+      <p className="text-gray-400 text-sm mb-2">{proyecto.cliente?.nombre}</p>
+      <p className="text-green-400 font-bold">${proyecto.montoTotal.toLocaleString()}</p>
+      <div className="flex gap-2 mt-4">
+        <button onClick={onEdit} className="btn-secondary text-xs px-2 py-1">
+          <Edit className="w-3 h-3 mr-1" /> Editar
         </button>
-
-        {showMenu && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="absolute right-0 top-12 bg-black/90 backdrop-blur-xl border border-white/20 rounded-lg py-2 z-10 min-w-[140px] sm:min-w-[160px]"
-          >
-            <button
-              onClick={(e) => { e.stopPropagation(); onEdit(); setShowMenu(false) }}
-              className="w-full px-3 sm:px-4 py-2 text-left text-gray-300 hover:text-white hover:bg-white/10 flex items-center space-x-2 text-sm"
-            >
-              <Edit className="w-3 h-3 sm:w-4 sm:h-4" />
-              <span>Editar</span>
-            </button>
-            {proyecto.estadoProyecto === 'EN_DESARROLLO' && (
-              <button
-                onClick={(e) => { e.stopPropagation(); onEstadoChange('EN_PAUSA'); setShowMenu(false) }}
-                className="w-full px-3 sm:px-4 py-2 text-left text-yellow-400 hover:text-yellow-300 hover:bg-yellow-500/10 flex items-center space-x-2 text-sm"
-              >
-                <PauseCircle className="w-3 h-3 sm:w-4 sm:h-4" />
-                <span>Pausar</span>
-              </button>
-            )}
-            {proyecto.estadoProyecto !== 'COMPLETADO' && (
-              <button
-                onClick={(e) => { e.stopPropagation(); onEstadoChange('COMPLETADO'); setShowMenu(false) }}
-                className="w-full px-3 sm:px-4 py-2 text-left text-green-400 hover:text-green-300 hover:bg-green-500/10 flex items-center space-x-2 text-sm"
-              >
-                <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4" />
-                <span>Completar</span>
-              </button>
-            )}
-            <hr className="border-white/10 my-1" />
-            <button
-              onClick={(e) => { e.stopPropagation(); onDelete(); setShowMenu(false) }}
-              className="w-full px-3 sm:px-4 py-2 text-left text-red-400 hover:text-red-300 hover:bg-red-500/10 flex items-center space-x-2 text-sm"
-            >
-              <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
-              <span>Eliminar</span>
-            </button>
-          </motion.div>
-        )}
-      </div>
-
-      {/* Contenido principal responsive */}
-      <div>
-        <div className="flex items-start justify-between mb-3">
-          <div className="flex-1 min-w-0">
-            <h3 className="text-white font-semibold text-sm sm:text-lg mb-1 truncate">
-              {proyecto.nombre}
-            </h3>
-            <p className="text-gray-400 text-xs sm:text-sm">
-              {getTipoLabel(proyecto.tipo)}
-            </p>
-          </div>
-          <div className={`px-2 py-1 rounded border text-xs font-medium flex items-center space-x-1 ml-2 ${getEstadoColor(proyecto.estadoProyecto)}`}>
-            {getEstadoIcon(proyecto.estadoProyecto)}
-            <span className="hidden sm:inline">{proyecto.estadoProyecto.replace('_', ' ')}</span>
-          </div>
-        </div>
-
-        {/* Cliente */}
-        <div className="flex items-center space-x-2 mb-3 sm:mb-4">
-          <User className="w-3 h-3 sm:w-4 sm:h-4 text-gray-400" />
-          <span className="text-gray-300 text-xs sm:text-sm truncate">
-            {proyecto.cliente?.nombre || 'Cliente no asignado'}
-          </span>
-        </div>
-
-        {/* Monto destacado */}
-        <div className="bg-white/5 rounded-lg p-2 sm:p-3 mb-3 sm:mb-4">
-          <div className="flex items-center justify-between">
-            <span className="text-gray-400 text-xs sm:text-sm">Valor del proyecto</span>
-            <span className="text-green-400 font-bold text-sm sm:text-lg">
-              ${proyecto.montoTotal.toLocaleString()}
-            </span>
-          </div>
-        </div>
-
-        {/* Fechas responsive */}
-        <div className="space-y-1 sm:space-y-2 mb-3 sm:mb-4">
-          <div className="flex items-center justify-between text-xs sm:text-sm">
-            <span className="text-gray-400">Inicio</span>
-            <span className="text-gray-300">
-              {new Date(proyecto.fechaInicio).toLocaleDateString()}
-            </span>
-          </div>
-          {proyecto.fechaEntrega && (
-            <div className="flex items-center justify-between text-xs sm:text-sm">
-              <span className="text-gray-400">Entrega</span>
-              <span className={`${esRetrasado ? 'text-red-400' : 'text-gray-300'}`}>
-                {new Date(proyecto.fechaEntrega).toLocaleDateString()}
-              </span>
-            </div>
-          )}
-        </div>
-
-        {/* Progreso de pagos mejorado */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-gray-400 text-xs sm:text-sm">Progreso de pagos</span>
-            <span className="text-gray-300 text-xs sm:text-sm font-medium">
-              {pagosPagados}/{totalPagos} ({progreso.toFixed(0)}%)
-            </span>
-          </div>
-          <div className="w-full bg-white/10 rounded-full h-1.5 sm:h-2">
-            <motion.div
-              initial={{ width: 0 }}
-              animate={{ width: `${progreso}%` }}
-              transition={{ duration: 0.8, delay: index * 0.05 }}
-              className="bg-gradient-to-r from-green-500 to-blue-500 h-1.5 sm:h-2 rounded-full"
-            />
-          </div>
-        </div>
+        <button onClick={onDelete} className="btn-secondary text-red-400 text-xs px-2 py-1">
+          <Trash2 className="w-3 h-3 mr-1" /> Eliminar
+        </button>
       </div>
     </motion.div>
   )
-})
-
-// Asignar displayName para evitar warnings de ESLint
-ProyectoCard.displayName = 'ProyectoCard'
-
-// Componente de tabla de proyectos
-interface ProyectosTableProps {
-  proyectos: Proyecto[]
-  selectedProyectos: string[]
-  onSelectProyecto: (id: string, selected: boolean) => void
-  onEdit: (proyecto: Proyecto) => void
-  onDelete: (proyecto: Proyecto) => void
-  onEstadoChange: (proyecto: Proyecto, estado: EstadoProyecto) => void
 }
-
-const ProyectosTable: React.FC<ProyectosTableProps> = ({
-  proyectos,
-  selectedProyectos,
-  onSelectProyecto,
-  onEdit,
-  onDelete,
-  onEstadoChange
-}) => {
-  const getEstadoColor = (estado: EstadoProyecto) => {
-    switch (estado) {
-      case 'EN_DESARROLLO': return 'text-blue-400 bg-blue-500/20'
-      case 'COMPLETADO': return 'text-green-400 bg-green-500/20'
-      case 'EN_PAUSA': return 'text-yellow-400 bg-yellow-500/20'
-      case 'CANCELADO': return 'text-red-400 bg-red-500/20'
-      default: return 'text-gray-400 bg-gray-500/20'
-    }
-  }
-
-  const getTipoLabel = (tipo: TipoProyecto) => {
-    const labels = {
-      SOFTWARE_A_MEDIDA: 'Software a Medida',
-      ECOMMERCE: 'E-commerce',
-      LANDING_PAGE: 'Landing Page',
-      SISTEMA_WEB: 'Sistema Web',
-      APP_MOVIL: 'App Móvil',
-      MANTENIMIENTO: 'Mantenimiento'
-    }
-    return labels[tipo] || tipo
-  }
-
-  return (
-    <div className="card overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead className="bg-white/5">
-            <tr>
-              <th className="text-left p-4">
-                <input 
-                  type="checkbox" 
-                  className="rounded bg-white/10 border-white/20"
-                  checked={selectedProyectos.length === proyectos.length && proyectos.length > 0}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      proyectos.forEach(p => onSelectProyecto(p.id, true))
-                    } else {
-                      proyectos.forEach(p => onSelectProyecto(p.id, false))
-                    }
-                  }}
-                />
-              </th>
-              <th className="text-left p-4 text-gray-400 font-medium">Proyecto</th>
-              <th className="text-left p-4 text-gray-400 font-medium">Cliente</th>
-              <th className="text-left p-4 text-gray-400 font-medium">Tipo</th>
-              <th className="text-left p-4 text-gray-400 font-medium">Monto</th>
-              <th className="text-left p-4 text-gray-400 font-medium">Estado</th>
-              <th className="text-left p-4 text-gray-400 font-medium">Progreso</th>
-              <th className="text-left p-4 text-gray-400 font-medium">Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {proyectos.map((proyecto, index) => {
-              const pagosPagados = proyecto.pagos?.filter(p => p.estadoPago === 'PAGADO').length || 0
-              const totalPagos = proyecto.pagos?.length || 0
-              const progreso = totalPagos > 0 ? (pagosPagados / totalPagos) * 100 : 0
-
-              return (
-                <motion.tr
-                  key={proyecto.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.05 }}
-                  className="border-t border-white/5 hover:bg-white/5 transition-colors"
-                >
-                  <td className="p-4">
-                    <input
-                      type="checkbox"
-                      checked={selectedProyectos.includes(proyecto.id)}
-                      onChange={(e) => onSelectProyecto(proyecto.id, e.target.checked)}
-                      className="rounded bg-white/10 border-white/20"
-                    />
-                  </td>
-                  <td className="p-4">
-                    <div>
-                      <p className="text-white font-medium">{proyecto.nombre}</p>
-                      <p className="text-gray-400 text-sm">
-                        Inicio: {new Date(proyecto.fechaInicio).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </td>
-                  <td className="p-4">
-                    <div>
-                      <p className="text-white">{proyecto.cliente?.nombre}</p>
-                      {proyecto.cliente?.empresa && (
-                        <p className="text-gray-400 text-sm">{proyecto.cliente.empresa}</p>
-                      )}
-                    </div>
-                  </td>
-                  <td className="p-4">
-                    <span className="text-gray-300">{getTipoLabel(proyecto.tipo)}</span>
-                  </td>
-                  <td className="p-4">
-                    <span className="text-green-400 font-medium">
-                      ${proyecto.montoTotal.toLocaleString()}
-                    </span>
-                  </td>
-                  <td className="p-4">
-                    <span className={`px-2 py-1 rounded text-xs font-medium ${getEstadoColor(proyecto.estadoProyecto)}`}>
-                      {proyecto.estadoProyecto.replace('_', ' ')}
-                    </span>
-                  </td>
-                  <td className="p-4">
-                    <div className="w-full">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs text-gray-400">{progreso.toFixed(0)}%</span>
-                        <span className="text-xs text-gray-400">{pagosPagados}/{totalPagos}</span>
-                      </div>
-                      <div className="w-full bg-white/10 rounded-full h-2">
-                        <div
-                          className="bg-gradient-to-r from-green-500 to-blue-500 h-2 rounded-full transition-all"
-                          style={{ width: `${progreso}%` }}
-                        />
-                      </div>
-                    </div>
-                  </td>
-                  <td className="p-4">
-                    <div className="flex items-center space-x-2">
-                      <button
-                        onClick={() => onEdit(proyecto)}
-                        className="text-gray-400 hover:text-blue-400 transition-colors"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => onDelete(proyecto)}
-                        className="text-gray-400 hover:text-red-400 transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
-                </motion.tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  )
-}
-
-ProyectosTable.displayName = 'ProyectosTable'

@@ -1,11 +1,11 @@
-// src/app/api/proyectos/route.ts - VERSIÓN CON SOPORTE DE MONEDA
+// src/app/api/proyectos/route.ts - VERSIÓN CORREGIDA
 import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
 import { requireAuth } from '@/lib/api-auth'
 
 const prisma = new PrismaClient()
 
-interface CreateProyectoDataWithCurrency {
+interface CreateProyectoData {
   nombre: string
   tipo: string
   montoTotal: number
@@ -14,16 +14,21 @@ interface CreateProyectoDataWithCurrency {
   fechaInicio: string
   fechaEntrega?: string
   clienteId: string
-  currency: 'USD' | 'ARS' // ✅ NUEVA PROPIEDAD
+  currency?: 'USD' | 'ARS'
 }
 
 export async function GET(request: NextRequest) {
   try {
+    console.log('🔍 GET /api/proyectos - Starting...')
+    
     const authResult = await requireAuth(request)
     
     if (authResult.error) {
+      console.log('❌ Auth failed:', authResult.response)
       return authResult.response
     }
+
+    console.log('✅ Auth successful, fetching proyectos...')
 
     const proyectos = await prisma.proyecto.findMany({
       orderBy: { fechaInicio: 'desc' },
@@ -48,28 +53,43 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    // ✅ AGREGAR INFORMACIÓN DE MONEDA A CADA PROYECTO
-    const proyectosWithCurrency = proyectos.map(proyecto => ({
+    console.log(`✅ Found ${proyectos.length} proyectos`)
+
+    // Simplificar: remover currency por ahora para evitar problemas
+    const proyectosResponse = proyectos.map(proyecto => ({
       ...proyecto,
-      currency: getCurrencyFromMetadata(proyecto.id), // Función auxiliar
+      // Agregar currency por defecto sin usar globals
+      currency: 'ARS' as const
     }))
 
-    return NextResponse.json(proyectosWithCurrency)
+    return NextResponse.json(proyectosResponse)
   } catch (error) {
-    console.error('Error al obtener proyectos:', error)
-    return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 })
+    console.error('❌ Error in GET /api/proyectos:', error)
+    return NextResponse.json(
+      { error: 'Error interno del servidor', details: error instanceof Error ? error.message : 'Unknown error' }, 
+      { status: 500 }
+    )
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
+    console.log('🔍 POST /api/proyectos - Starting...')
+    
     const authResult = await requireAuth(request)
     
     if (authResult.error) {
+      console.log('❌ Auth failed:', authResult.response)
       return authResult.response
     }
 
-    const data: CreateProyectoDataWithCurrency = await request.json()
+    const data: CreateProyectoData = await request.json()
+    console.log('📝 Received project data:', { 
+      nombre: data.nombre, 
+      clienteId: data.clienteId, 
+      montoTotal: data.montoTotal 
+    })
+
     const { 
       nombre, 
       tipo, 
@@ -79,21 +99,30 @@ export async function POST(request: NextRequest) {
       fechaInicio, 
       fechaEntrega, 
       clienteId,
-      currency // ✅ NUEVA PROPIEDAD
+      currency = 'ARS'
     } = data
 
     // Validaciones básicas
     if (!nombre || !clienteId || !montoTotal) {
+      console.log('❌ Validation failed: missing required fields')
       return NextResponse.json({ 
         error: 'Nombre, cliente y monto son requeridos' 
       }, { status: 400 })
     }
 
-    if (!currency || !['USD', 'ARS'].includes(currency)) {
+    // Verificar que el cliente existe
+    const clienteExists = await prisma.cliente.findUnique({
+      where: { id: clienteId }
+    })
+
+    if (!clienteExists) {
+      console.log('❌ Cliente not found:', clienteId)
       return NextResponse.json({ 
-        error: 'Moneda inválida. Debe ser USD o ARS' 
+        error: 'Cliente no encontrado' 
       }, { status: 400 })
     }
+
+    console.log('✅ Cliente verified, creating project...')
 
     // Crear proyecto
     const proyecto = await prisma.proyecto.create({
@@ -110,68 +139,52 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    // ✅ GUARDAR LA MONEDA DEL PROYECTO
-    await saveCurrencyMetadata(proyecto.id, currency)
+    console.log('✅ Project created with ID:', proyecto.id)
 
-    // Crear pagos automáticamente
-    await crearPagosAutomaticos({
-      id: proyecto.id,
-      montoTotal: proyecto.montoTotal,
-      cuotas: proyecto.cuotas || 1,
-      fechaInicio: proyecto.fechaInicio,
-      formaPago: proyecto.formaPago
-    })
-
-    // ✅ RETORNAR PROYECTO CON INFORMACIÓN DE MONEDA
-    const proyectoWithCurrency = {
-      ...proyecto,
-      currency
+    // Crear pagos automáticamente con mejor manejo de errores
+    try {
+      await crearPagosAutomaticos({
+        id: proyecto.id,
+        montoTotal: proyecto.montoTotal,
+        cuotas: proyecto.cuotas || 1,
+        fechaInicio: proyecto.fechaInicio,
+        formaPago: proyecto.formaPago
+      })
+      console.log('✅ Pagos automáticos creados')
+    } catch (pagosError) {
+      console.error('⚠️ Error creating automatic payments:', pagosError)
+      // No fallar el proyecto si los pagos fallan, solo log
     }
 
-    return NextResponse.json(proyectoWithCurrency, { status: 201 })
+    // Obtener proyecto completo para response
+    const proyectoCompleto = await prisma.proyecto.findUnique({
+      where: { id: proyecto.id },
+      include: {
+        cliente: {
+          select: {
+            id: true,
+            nombre: true,
+            empresa: true,
+            email: true
+          }
+        },
+        pagos: true
+      }
+    })
+
+    console.log('✅ Project creation completed successfully')
+
+    return NextResponse.json({
+      ...proyectoCompleto,
+      currency
+    }, { status: 201 })
+
   } catch (error) {
-    console.error('Error al crear proyecto:', error)
-    return NextResponse.json({ error: 'Error al crear proyecto' }, { status: 500 })
-  }
-}
-
-// ✅ FUNCIONES AUXILIARES PARA MANEJAR METADATA DE MONEDA
-async function saveCurrencyMetadata(proyectoId: string, currency: 'USD' | 'ARS') {
-  try {
-    // Opción 1: Guardar en una tabla separada de metadata
-    // await prisma.proyectoMetadata.create({
-    //   data: {
-    //     proyectoId,
-    //     key: 'currency',
-    //     value: currency
-    //   }
-    // })
-
-    // Opción 2: Guardar en localStorage del servidor (temporal)
-    // En un entorno real, esto se guardaría en la base de datos
-    global.projectCurrencies = global.projectCurrencies || {}
-    global.projectCurrencies[proyectoId] = currency
-    
-    console.log(`💰 Currency ${currency} saved for project ${proyectoId}`)
-  } catch (error) {
-    console.error('Error saving currency metadata:', error)
-  }
-}
-
-function getCurrencyFromMetadata(proyectoId: string): 'USD' | 'ARS' {
-  try {
-    // Opción 1: Cargar desde tabla de metadata
-    // const metadata = await prisma.proyectoMetadata.findFirst({
-    //   where: { proyectoId, key: 'currency' }
-    // })
-    // return metadata?.value || 'ARS'
-
-    // Opción 2: Cargar desde storage temporal
-    global.projectCurrencies = global.projectCurrencies || {}
-    return global.projectCurrencies[proyectoId] || 'ARS'
-  } catch (error) {
-    console.error('Error getting currency metadata:', error)
-    return 'ARS' // Default
+    console.error('❌ Error in POST /api/proyectos:', error)
+    return NextResponse.json({ 
+      error: 'Error al crear proyecto',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 })
   }
 }
 
@@ -183,26 +196,31 @@ interface ProyectoData {
   formaPago: string
 }
 
-// Función auxiliar para crear pagos (sin cambios)
+// Función auxiliar mejorada para crear pagos
 async function crearPagosAutomaticos(proyecto: ProyectoData) {
-  const { id, montoTotal, cuotas, fechaInicio, formaPago } = proyecto
-  const montoPorCuota = montoTotal / cuotas
-
-  for (let i = 1; i <= cuotas; i++) {
-    const fechaVencimiento = new Date(fechaInicio)
+  try {
+    console.log('💰 Creating automatic payments for project:', proyecto.id)
     
-    // Calcular fecha de vencimiento según forma de pago
-    if (formaPago === 'MENSUAL') {
-      fechaVencimiento.setMonth(fechaVencimiento.getMonth() + i - 1)
-    } else if (formaPago === 'DOS_CUOTAS') {
-      fechaVencimiento.setMonth(fechaVencimiento.getMonth() + (i - 1) * 3) // Cada 3 meses
-    } else if (formaPago === 'TRES_CUOTAS') {
-      fechaVencimiento.setMonth(fechaVencimiento.getMonth() + (i - 1) * 2) // Cada 2 meses
-    }
-    // Para PAGO_UNICO, usar fecha de inicio
+    const { id, montoTotal, cuotas, fechaInicio, formaPago } = proyecto
+    const montoPorCuota = montoTotal / cuotas
 
-    await prisma.pago.create({
-      data: {
+    // Crear todos los pagos en una transacción
+    const pagosData = []
+    
+    for (let i = 1; i <= cuotas; i++) {
+      const fechaVencimiento = new Date(fechaInicio)
+      
+      // Calcular fecha de vencimiento según forma de pago
+      if (formaPago === 'MENSUAL') {
+        fechaVencimiento.setMonth(fechaVencimiento.getMonth() + i - 1)
+      } else if (formaPago === 'DOS_CUOTAS') {
+        fechaVencimiento.setMonth(fechaVencimiento.getMonth() + (i - 1) * 3) // Cada 3 meses
+      } else if (formaPago === 'TRES_CUOTAS') {
+        fechaVencimiento.setMonth(fechaVencimiento.getMonth() + (i - 1) * 2) // Cada 2 meses
+      }
+      // Para PAGO_UNICO, usar fecha de inicio
+
+      pagosData.push({
         numeroCuota: i,
         montoCuota: i === cuotas ? 
           montoTotal - (montoPorCuota * (cuotas - 1)) : // Ajustar último pago por redondeo
@@ -210,14 +228,21 @@ async function crearPagosAutomaticos(proyecto: ProyectoData) {
         fechaVencimiento,
         proyectoId: id,
         estadoPago: 'PENDIENTE'
-      }
-    })
-  }
-}
+      })
+    }
 
-// ===============================================
-// DECLARACIÓN GLOBAL PARA TYPESCRIPT
-// ===============================================
-declare global {
-  var projectCurrencies: Record<string, 'USD' | 'ARS'> | undefined
+    // Crear todos los pagos de una vez
+    await prisma.pago.createMany({
+      data: pagosData.map(pago => ({
+        ...pago,
+        // Aseguramos que estadoPago sea del tipo correcto (por ejemplo, 'PENDIENTE' as EstadoPago)
+        estadoPago: 'PENDIENTE' as any // Cambia 'any' por el enum correcto si lo tienes importado, por ejemplo: as EstadoPago
+      }))
+    })
+
+    console.log(`✅ Se crearon ${pagosData.length} pagos automáticos`)
+  } catch (error) {
+    console.error('❌ Error in crearPagosAutomaticos:', error)
+    throw error
+  }
 }
